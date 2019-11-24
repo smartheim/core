@@ -13,14 +13,16 @@ you might also be interested in [OHX OS](https://github.com/openhab-nodes/ohx-os
 
 ## Table of Contents
 
+1. [Table of Contents](#table-of-contents)
 1. [Download and Start up](#download-and-start-up)
 1. [Usage](#usage)
 	1. [Command line Options](#command-line-options)
 1. [Architecture](#architecture)
 1. [Compile and Contribute](#compile-and-contribute)
 1. [How to develop Addons](#how-to-develop-addons)
-1. [Report a security event or vulnerability](#report-a-security-event-or-vulnerability)
-1. [Maintainer: Core Deployment](#maintainer:-core-deployment)
+1. [Security](#security)
+	1. [Report a security event or vulnerability](#report-a-security-event-or-vulnerability)
+1. [Maintainer: Core Deployment](#maintainer-core-deployment)
 
 ## Download and Start up
 
@@ -52,6 +54,12 @@ Container usage:
    `docker run -rm -p 80:80 -p 443:443 -v ./:/ohx --cap-add NET_BIND_SERVICE -d docker.pkg.github.com/openhab-nodes/core/ohx-core`.
    - Change the `./` part to the directory where you want OHX to store configuration, rules, etc.
    - Use  `docker run -rm -it docker.pkg.github.com/openhab-nodes/core/ohx-core -h` to print a list of command line options to adjust OHX's behaviour.
+
+**Logging**: OHX logs are informative logs, no debug outputs.
+They help with following what is going on but are not required to maintain an OHX installation and could as well go to `/dev/null`.
+Reduce log output with `RUST_LOG=error ohx-core` (standalone) or `docker run ... -e RUST_LOG=error` (docker).
+All relevant status data and notifications are accessible on the *Setup & Maintenance* UI and via gRPC API.
+Telemetry data is feed into InfluxDB (if InfluxDB is running).
 
 ## Usage
 
@@ -89,6 +97,10 @@ It is out of scope for OHX to ensure that limit on a standalone installation acc
 A best effort approach is used (by watching directories and checking file sizes once in a while),
 which simply stops an Addon that exceeds the quota. You can disable this via `ohx-core --disable-quota-enforcement`.
 
+**Self healing**: OHX Core tries its best to keep running and cope with certain conditions
+like expired certificates, low disk space and low memory.
+Set policies for each condition, for example `ohx-core --low-memory-policy=gradually-restart-addons --low-disk-space-policy=stop-addons`.
+
 ## Architecture
 
 In-depth explanations are given on https://openhabx.com. A quick run down on the architecure follows.
@@ -117,7 +129,16 @@ Amazon Alexa and Google Home support.
 
 ## Compile and Contribute
 
-OHX is written in [Rust](https://rustup.rs/). 
+OHX is written in [Rust](https://rustup.rs/).
+You can develop for Rust in Jetbrains CLion, Visual Studio Code, Visual Studio and Eclipse.
+Compile with `cargo build` and for production binaries use `cargo build --release`.
+
+Run with `cargo run`.
+
+PRs are welcome. A PR is expected to be under the same license as the repository itself.
+Newly introduced dependencies must be under any of the following licenses: MIT, Apache 2, BSD.
+OHX follows [Semantic Versioning](http://semver.org/) for versioning.
+Each service in this repository is versioned on its own.
 
 ## How to develop Addons
 
@@ -126,26 +147,32 @@ Find template repositories on https://github.com/openhab-nodes for different pro
 
 Recommended Addons in Rust for code inspection and learn by example include:
 
-`hueemulation`: [IO-Service] Registers an http API endpoint on /api and provides the full Hue API, emulating a Hue bridge version 2.
-`hue_deconz`: [Binding] Adds support for Zigbee devices via a hue bridge V2 or (deconz) software hue bridge.
+* `hueemulation`: [IO-Service] Registers an http API endpoint on /api and provides the full Hue API, emulating a Hue bridge version 2.
+* `hue_deconz`: [Binding] Adds support for Zigbee devices via a hue bridge V2 or (deconz) software hue bridge.
    Shows how to use upnp to find bridges.
-`mqtt_homie`: [Binding+Transformation] Finds registered MQTT Homie devices on a given MQTT Server.
-`mozilla_webthing`: [Binding] Finds Mozilla WebThings in your network. 
-`cloudconnector`: [IO-Service] Amazon Alexa and Google Home support via https://openhabx.com account.
+* `mqtt_homie`: [Binding+Transformation] Finds registered MQTT Homie devices on a given MQTT Server.
+* `mozilla_webthing`: [Binding] Finds Mozilla WebThings in your network. 
+* `cloudconnector`: [IO-Service] Amazon Alexa and Google Home support via https://openhabx.com account.
    Uses a super fast, lightweight TCP proxy (see [OHX-Cloud](https://github.com/openhab-nodes/cloud) repository) to provide
    a bridge between the Amazon Alexa servers / Google Home Fulfilment Action service and your local OHX installation.
-`scriptengine_rust`: Allows scripts to be rust programs. `.rs` script files will be release compiled with the latest Rust compiler.
-`scriptengine_nodejs`: Registers nodejs for `.js` javascript files.
+* `scriptengine_rust`: Allows scripts to be rust programs. `.rs` script files will be release compiled with the latest Rust compiler.
+* `scriptengine_nodejs`: Registers nodejs for `.js` javascript files.
 
 You deploy your developed Addon to the OHX Addon Registry via the [OHX-Addon-CLI](https://github.com/openhab-nodes/cloud-addon-registry-cli).
 
-## Report a security event or vulnerability
+## Security
 
 Despite everyone’s best efforts, security incidents are inevitable in an increasingly connected world.
 OHX is written in Rust to avoid common memory access and memory management pitfalls, even for new contributors.
 
 Industry standards like OAuth and https are used on the external interface level.
-Modern operating system kernel features restrict internet provided executables ("Scripts", "Addons").
+Encryption and https certificate management is based on Rustls and Ring, two very well maintained Rust crates.
+No openSSL or C legacy involved.
+
+**On Linux only**: Modern operating system kernel features restrict internet provided executables ("Scripts", "Addons")
+via [network user namespaces](https://en.wikipedia.org/wiki/Linux_namespaces#Network_(net)), [cgroups](https://en.wikipedia.org/wiki/Cgroups) and [seccomp](https://en.wikipedia.org/wiki/Seccomp).
+
+### Report a security event or vulnerability
 
 OHX maintainers are committed to provide a secure solution within the limits that are publicly documented.
 Should a serious security incident occur, OHX maintainers will:
@@ -157,7 +184,7 @@ Report any findings to security@openhabx.com.
 
 ## Maintainer: Core Deployment
 
-Use shell scripts that are found in `scripts/`:
+Update the CHANGELOG file before releasing! Use shell scripts that are found in `scripts/`:
 
 * build.sh: Cross compile for x86_64, armv7l, aarch64 as static musl binaries
 * deploy.sh: Deploy to Github Releases and Github Package Registry (Docker container)
