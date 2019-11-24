@@ -1,0 +1,5 @@
+[workspace]
+members=["core","auth","ruleengine"]
+
+[profile.release]
+lto = true

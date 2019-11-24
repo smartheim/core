@@ -1,0 +1,43 @@
+[package]
+name = "ohx-core"
+version = "0.1.0"
+authors = ["David Graeff <david.graeff@web.de>"]
+description = "OHX is a modern smarthome solution, embracing technologies like software containers for language agnostic extensibility. Written in Rust with an extensive test suite, OHX is fast, efficient, secure and fun to work on."
+readme = "readme.md"
+homepage = "https://github.com/openhab-nodes/core"
+repository = "https://github.com/openhab-nodes/core"
+keywords = ["smarthome","smart-home"]
+categories = []
+license = "MIT"
+edition = "2018"
+
+# Render the readme file on doc.rs
+[package.metadata.docs.rs]
+features = [ "external_doc" ]
+
+[badges]
+is-it-maintained-open-issues = { repository = "openhab-nodes/core" }
+is-it-maintained-issue-resolution = { repository = "openhab-nodes/core" }
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+# General
+serde = { version = "1.0.101", features = ["derive"] }
+serde_json = "1.0.41"
+serde_derive = "1.0.101"
+log = "0.4.8"
+env_logger = "0.7.0"
+nix = "0.15.0"
+structopt = "0.3.2"
+
+# Async: Update to futures > 0.3 as soon as tokio releases a stable
+#futures-core =  { version = "^0.3.0"}
+#futures-util =  { version = "^0.3.0"}
+#futures-channel =  { version = "^0.3.0"}
+futures-core =  { version = "^0.3.0-alpha.18", package = "futures-core-preview"}
+futures-util =  { version = "^0.3.0-alpha.18", package = "futures-util-preview"}
+futures-io =  { version = "^0.3.0-alpha.18", package = "futures-io-preview"}
+futures-channel =  { version = "^0.3.0-alpha.18", package = "futures-channel-preview"}
+tokio-net = {version="0.2.0-alpha.6",features = ["signal"]}
+tokio = { version = "0.2.0-alpha.6", features = ["sync","net","signal","timer"] }
+pin-utils = "0.1.0-alpha.4"
