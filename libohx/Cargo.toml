@@ -1,10 +1,10 @@
 [package]
-name = "ohx-core"
+name = "ohx-lib-rs"
 version = "0.1.0"
 authors = ["David Graeff <david.graeff@web.de>"]
 description = "OHX is a modern smarthome solution, embracing technologies like software containers for language agnostic extensibility. Written in Rust with an extensive test suite, OHX is fast, efficient, secure and fun to work on."
 readme = "../readme.md"
-homepage = "https://github.com/openhab-nodes/core"
+homepage = "https://github.com/openhab-nodes/core/libohx"
 repository = "https://github.com/openhab-nodes/core"
 keywords = ["smarthome","smart-home"]
 categories = []
