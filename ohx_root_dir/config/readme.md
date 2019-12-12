@@ -9,10 +9,10 @@ OHX services use "ohx-core", "ohx-auth" and "ohx-ruleengine" directories.
 
 ## Content
 
-All .json files in the respective subdirectory are handled as configuration files.
-For example "config/ohx-addon-homie/my-device.json".
+All .yaml files in the respective subdirectory are handled as configuration files.
+For example "config/ohx-addon-homie/my-device.yaml".
 
-An Addon should(!) provide a json schema (and json ui schema if necessary) per configuration file
+An Addon should(!) provide a json schema (and optionally a json ui schema) per configuration file
 via the programming language specific OHX API.
 
 The "Setup & Maintenance" Web UI will use configuration files together with json (ui) schemas

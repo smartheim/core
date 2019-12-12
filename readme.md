@@ -3,18 +3,23 @@
 [![Build Status](https://github.com/openhab-nodes/core/workflows/test/badge.svg)](https://github.com/openhab-nodes/core/actions)
 [![](https://img.shields.io/badge/license-MIT-blue.svg)](http://opensource.org/licenses/MIT)
 
-> OHX is a modern smarthome solution, embracing technologies like software containers for language agnostic extensibility. Written in Rust with an extensive test suite, OHX is fast, efficient, secure and fun to work on.
+> OHX is a modern Smart Home solution, embracing technologies like software containers for language agnostic extensibility. Written in Rust with an extensive test suite, OHX is fast, efficient, secure and fun to work on.
 
-This repository is a [Rust](https://rustup.rs/) workspace. OHX Core consists of multiple services that work in tandem
-to form a smarthome solution. Find the individual projects in their respective subdirectories.
+OHX Core consists of multiple services that work in tandem to form a Smart Home solution.
+Find the individual projects in their respective subdirectories.
+You usually want to use OHX Addons for specific device support.
 
 For a ready to use operating system image for single board computers and regular PCs (and virtual machines),
 you might also be interested in [OHX OS](https://github.com/openhab-nodes/ohx-os/).
 
+> OHX Core Services are safe to be exposed to the Internet and implement various anti-abuse techniques
+like IP rate limiting, Authentication, limited backpressure queues and limited input buffers.
+
 ## Table of Contents
 
-1. [Table of Contents](#table-of-contents)
 1. [Download and Start up](#download-and-start-up)
+	1. [Via software containers (Recommened)](#via-software-containers-recommened)
+	1. [Non-container](#non-container)
 1. [Usage](#usage)
 	1. [Command line Options](#command-line-options)
 1. [Architecture](#architecture)
@@ -26,40 +31,58 @@ you might also be interested in [OHX OS](https://github.com/openhab-nodes/ohx-os
 
 ## Download and Start up
 
-**Prerequirement:** OHX uses software containers for Addons.
-A software container can easily be restricted in its resource usage (Memory, CPU, File Access, Network Access, limited Kernel API) to protect the host system from potential malicous Addons or just badly written Addons.
-You must have [Docker](https://www.docker.com/products/docker-desktop) or a Docker compatible (for example [`podman`](https://podman.io/getting-started/installation)) command line tool installed.
+There are two ways in how you can use OHX:
+1. As software containers with an installed Docker engine or Podman
+2. As standalone binaries. This option is helpful for development and debugging.
 
-By default `ohx-core` will try to start with http port 80 and https port 443.
+Please note that OHX uses software containers for Addons either way.
+If no such support is installed, you will not be able to install/uninstall/manage Addons.
 
-> Core is safe to be exposed to the Internet and implements various anti-abuse techniques
-like IP rate limiting, Authentication, limited backpressure queues and limited input buffers.
+> **About software containers**: A software container can easily and in a standardized way be restricted in its resource usage
+(Memory, CPU, File Access, Network Access, limited Kernel API) to protect the host system from potential malicious Addons or just badly written Addons.
 
-Non-container usage:
+### Via software containers (Recommended)
 
-1. Download and extract the newest zip file for your hardware.
-   Find it on the [releases page](https://github.com/openhab-nodes/core/releases).
-2. Your operating system may prevent the use of "system" ports (ports below 1024) though.
-   Add the NET_BINDSERVICE capability on Linux / Mac OS like so: `sudo setcap CAP_NET_BIND_SERVICE=+eip ./ohx-core`
-2. Start the `ohx-core` binary. 
-   - Call `ohx-core -h` to print a list of command line options to adjust OHX's behaviour.
+**Prerequirement:** You must have [Docker](https://www.docker.com/products/docker-desktop) or a Docker compatible (for example [`podman`](https://podman.io/getting-started/installation)) command line tool installed.
 
-Apart from installing additional addons this method does not require further internet access.
+- By default `ohx-core` will try to start on http port 8080 and https port 8443.
+  Docker port routing is used to expose OHX to port 80 and 443.
+- OHX core service containers require a few mounted directories.
+  The following start up methods assume that there is a "ohx_root_dir" directory in the working directory.
 
-Container usage:
+Use the `docker-compose.yml` file to start all relevant containers.
+Alternatively use the `start_containers.sh` file if you do not have access to docker compose.
 
-1. Pull the container image of the start binary with
-   `docker pull docker.pkg.github.com/openhab-nodes/core/ohx-core`.
+
+1. Pull the container image of the ohx-code binary with
+   `docker pull docker.pkg.github.com/openhab-nodes/core/ohx-core:latest`.
 2. Start `ohx-core`, which will pull and start up the rest of the images:
-   `docker run -rm -p 80:80 -p 443:443 -v ./:/ohx --cap-add NET_BIND_SERVICE -d docker.pkg.github.com/openhab-nodes/core/ohx-core`.
+   `docker run -rm -p 8080:80 -p 8443:443 -v ./ohx_root_dir:/ohx --cap-add NET_BIND_SERVICE -d docker.pkg.github.com/openhab-nodes/core/ohx-core`.
    - Change the `./` part to the directory where you want OHX to store configuration, rules, etc.
    - Use  `docker run -rm -it docker.pkg.github.com/openhab-nodes/core/ohx-core -h` to print a list of command line options to adjust OHX's behaviour.
 
+### Non-container
+
+1. Download and extract the newest zip file for your hardware.
+   Find it on the [releases page](https://github.com/openhab-nodes/core/releases).
+2. Your operating system may prevent the use of "system" ports (ports below 1024).
+   If you want port 80 and port 443, add the NET_BINDSERVICE capability on Linux / Mac OS like so:
+   `sudo setcap CAP_NET_BIND_SERVICE=+eip ./ohx-core`
+3. Start the `ohx-auth`, `ohx-core`, `ohx-ruleengine` binaries. 
+   - Call `ohx-core -h` to print a list of command line options to adjust OHX's behaviour.
+   - Without `ohx-auth` you will not be able to login via the command line utility or the *Setup & Maintenance* Web UI.
+   - Without `ohx-ruleengine` scripts and rules are not enabled, but Addon interconnection does work.
+4. You can start additional Addons without using software containers as well.
+   Installing Addons via the *Setup & Maintenance* Web UI is not possible however.
+
 **Logging**: OHX logs are informative logs, no debug outputs.
-They help with following what is going on but are not required to maintain an OHX installation and could as well go to `/dev/null`.
+They help with following what is going on but are not required to maintain an OHX installation and you can happily use
+OHX without ever looking at the logs.
+- All relevant status data and notifications are accessible on the *Setup & Maintenance* UI and via gRPC API.
+- Telemetry data is feed into InfluxDB (if InfluxDB is running).
+
 Reduce log output with `RUST_LOG=error ohx-core` (standalone) or `docker run ... -e RUST_LOG=error` (docker).
-All relevant status data and notifications are accessible on the *Setup & Maintenance* UI and via gRPC API.
-Telemetry data is feed into InfluxDB (if InfluxDB is running).
+
 
 ## Usage
 
@@ -78,7 +101,7 @@ instances to be used for further calls: `ohx-cli login 192.168.1.17:443`.
 The **OHX Root directory** is by default the working directory.
 You may change this by starting with `ohx-core -c your_directory`.
 By default OHX-Core will create the OHX root directory structure including
-`backups`, `certs`, `config`, `scripts`, `things` and `webui`, if it not yet exists.
+`backups`, `certs`, `config`, `scripts`, `rules` and `webui`, if it not yet exists.
 
 If you provide an https certificate (x509 in *der* format) via `OHX-ROOT/certs/key.der` and `OHX-ROOT/certs/cert.der`,
 OHX Core will use it.
@@ -103,9 +126,9 @@ Set policies for each condition, for example `ohx-core --low-memory-policy=gradu
 
 ## Architecture
 
-In-depth explanations are given on https://openhabx.com. A quick run down on the architecure follows.
+In-depth explanations are given on https://openhabx.com. A quick run down on the architecture follows.
 
-`ohx-core` is a static https file server for web-uis, and a thin supervisior for software containers
+`ohx-core` is a static https file server for web-uis, and a thin supervisor for software containers
 (it uses the `docker` or `podman` CLI interface internally) to install, start and manage OHX Addons.
 - It generates a self-signed https certificate if none is found at start up and redirects http requests to https.
 - Core also routes *Commands* between Addons and between Addons and the *Rule Engine*.
@@ -125,12 +148,6 @@ It uses Yaml files to express rules for easy backups, and rule sharing.
 `ohx-auth` is an Identity and Access Management service, based on OAuth. User accounts are stored in flat files.
 It also manages extern OAuth Tokens and token refreshing, like the https://openhabx.com cloud link for
 Amazon Alexa and Google Home support.
-
-`ohx-admin-http-api` provides an http API for the otherwise gRPC only core. 
-  It covers addon management, configurations, discovery and rule engine.
-
-`ohx-scriptengine-quickjs`  The script engine for javascript ES2020 `.js` files. It compiles js files into executables. The quickjs `os` namespace can be used (for `setTimeout`), the `std` module is not enabled though. Those compiled binaries are executed with a non-connected user network namespace (by default), an empty, read-only root filesystem, limited linux API via seccomp and a limited runtime of 5 seconds.
-   
 
 ## Compile and Contribute
 

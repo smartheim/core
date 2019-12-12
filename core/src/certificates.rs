@@ -1,53 +1,62 @@
-#[macro_use]
-extern crate log;
-
-mod config;
-
-use rcgen::{Certificate, CertificateParams,
-            DistinguishedName, DnType, SanType,
-            date_time_ymd};
+use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType, SanType, date_time_ymd, KeyPair, PKCS_ECDSA_P256_SHA256, PKCS_RSA_SHA256};
 use std::fs;
 
-use env_logger::{Env, TimestampPrecision, DEFAULT_FILTER_ENV};
-use structopt::StructOpt;
+use log::warn;
+
 use std::thread::sleep;
 use std::fs::File;
 use std::io::{BufReader, Read, ErrorKind};
 use chrono::{Datelike, DateTime, Utc};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const KEY_FILENAME: &'static str = "https_key.pem";
 const KEY_FILENAME_DER: &'static str = "https_key.der";
 const PUBLIC_FILENAME: &'static str = "https_cert.pem";
 const PUBLIC_FILENAME_DER: &'static str = "https_cert.der";
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut builder = env_logger::Builder::from_env(Env::new().filter_or(DEFAULT_FILTER_ENV, "info"));
-    builder
-        .format_timestamp(Some(TimestampPrecision::Seconds))
-        .format_module_path(false)
-        .init();
+pub enum FileFormat {
+    DER,
+    PEM
+}
 
-    let config: config::Config = config::Config::from_args();
+pub fn key_filename(cert_dir: &Path,format: FileFormat) -> PathBuf {
+    match format {
+        FileFormat::DER => cert_dir.join(KEY_FILENAME_DER),
+        FileFormat::PEM => cert_dir.join(KEY_FILENAME),
+    }
+}
 
-    wait_until_known_time(&config)?;
+pub fn cert_filename(cert_dir: &Path,format: FileFormat) -> PathBuf {
+    match format {
+        FileFormat::DER => cert_dir.join(PUBLIC_FILENAME_DER),
+        FileFormat::PEM => cert_dir.join(PUBLIC_FILENAME),
+    }
+}
 
-    let cert_dir = config.cert_dir.unwrap_or(std::env::current_dir().expect("Current dir to work")).join("certs");
+pub fn wait_until_known_time(no_time_wait: bool) -> Result<(), std::io::Error> {
+    // Wait until time is known. Systems without a buffered clock will start with unix timestamp 0 (1970/1/1).
+    let mut now = chrono::Utc::now();
+    while now.year() == 1970 {
+        if no_time_wait { return Err(std::io::Error::new(std::io::ErrorKind::Other, "Time unknown")); }
+        sleep(std::time::Duration::from_secs(2));
+        now = chrono::Utc::now();
+    }
+    Ok(())
+}
 
-    if check_existing(cert_dir.as_path()) {
-        info!("Existing certificate is still valid. Exiting.");
+pub fn check_gen_certificates(cert_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if check_existing(&cert_dir) {
         return Ok(());
     }
 
     std::fs::create_dir_all(&cert_dir)?;
     let now = chrono::Utc::now();
     create_cert(&cert_dir, now)?;
-    info!("Created cert and key files in {:?}", cert_dir);
     Ok(())
 }
 
 fn create_cert(cert_dir: &Path, now: DateTime<Utc>) -> Result<(), Box<dyn std::error::Error>> {
-    let cert = Certificate::from_params(create_cert_params(now))?;
+    let cert = Certificate::from_params(create_cert_params(now)?)?;
     fs::write(cert_dir.join(PUBLIC_FILENAME), &cert.serialize_pem().unwrap().as_bytes())?;
     fs::write(cert_dir.join(PUBLIC_FILENAME_DER), &cert.serialize_der().unwrap())?;
     fs::write(cert_dir.join(KEY_FILENAME), &cert.serialize_private_key_pem().as_bytes())?;
@@ -55,8 +64,10 @@ fn create_cert(cert_dir: &Path, now: DateTime<Utc>) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-fn create_cert_params(now: DateTime<Utc>) -> CertificateParams {
+fn create_cert_params(now: DateTime<Utc>) -> Result<CertificateParams, Box<dyn std::error::Error>> {
     let mut params: CertificateParams = Default::default();
+    params.alg = &PKCS_ECDSA_P256_SHA256;
+    params.key_pair=Some(KeyPair::generate(&PKCS_ECDSA_P256_SHA256)?);
     params.not_before = date_time_ymd(1970, 01, 01);
     params.not_after = now.with_year(now.year()+1).expect("Year to be in range");
     params.distinguished_name = DistinguishedName::new();
@@ -64,18 +75,7 @@ fn create_cert_params(now: DateTime<Utc>) -> CertificateParams {
     params.distinguished_name.push(DnType::CommonName, "OHX Smarthome");
     params.subject_alt_names = vec![SanType::DnsName("ohx.local".to_string()),
                                     SanType::DnsName("localhost".to_string())];
-    params
-}
-
-fn wait_until_known_time(config: &config::Config) -> Result<(), std::io::Error> {
-    // Wait until time is known. Systems without a buffered clock will start with unix timestamp 0 (1970/1/1).
-    let mut now = chrono::Utc::now();
-    while now.year() == 1970 {
-        if config.no_time_wait { return Err(std::io::Error::new(std::io::ErrorKind::Other, "Time unknown")); }
-        sleep(std::time::Duration::from_secs(2));
-        now = chrono::Utc::now();
-    }
-    Ok(())
+    Ok(params)
 }
 
 /// Return true if a valid certificate has been found
@@ -93,8 +93,8 @@ fn check_existing(cert_dir: &Path) -> bool {
     });
 
     match public_cert {
-        Ok(cert) => {
-            if let Some(duration) = cert.time_to_expiration() {
+        Ok(validity) => {
+            if let Some(duration) = validity.time_to_expiration() {
                 // Return true if the certificate is still valid for at least 2 weeks
                 return duration.as_secs() > 60 * 60 * 24 * 14;
             }
@@ -108,7 +108,7 @@ fn check_existing(cert_dir: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use chrono::Datelike;
-    use crate::{KEY_FILENAME_DER, PUBLIC_FILENAME_DER};
+    use super::{KEY_FILENAME_DER, PUBLIC_FILENAME_DER};
 
     #[test]
     fn check_existing() {

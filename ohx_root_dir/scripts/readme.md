@@ -2,6 +2,7 @@
 
 You need a script engine to be installed.
 For example the "scriptengine_quickjs" for `.js` files.
+Files are watched for changes and re-loaded if the respective script engine supports this.
 
 Scripts are not a standalone thing.
 They are invoked by the rule engine as "condition", "action" or "transformation".
