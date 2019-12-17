@@ -45,21 +45,14 @@ If no such support is installed, you will not be able to install/uninstall/manag
 
 **Prerequirement:** You must have [Docker](https://www.docker.com/products/docker-desktop) or a Docker compatible (for example [`podman`](https://podman.io/getting-started/installation)) command line tool installed.
 
-- By default `ohx-core` will try to start on http port 8080 and https port 8443.
-  Docker port routing is used to expose OHX to port 80 and 443.
-- OHX core service containers require a few mounted directories.
-  The following start up methods assume that there is a "ohx_root_dir" directory in the working directory.
-
 Use the `docker-compose.yml` file to start all relevant containers.
 Alternatively use the `start_containers.sh` file if you do not have access to docker compose.
 
-
-1. Pull the container image of the ohx-code binary with
-   `docker pull docker.pkg.github.com/openhab-nodes/core/ohx-core:latest`.
-2. Start `ohx-core`, which will pull and start up the rest of the images:
-   `docker run -rm -p 8080:80 -p 8443:443 -v ./ohx_root_dir:/ohx --cap-add NET_BIND_SERVICE -d docker.pkg.github.com/openhab-nodes/core/ohx-core`.
-   - Change the `./` part to the directory where you want OHX to store configuration, rules, etc.
-   - Use  `docker run -rm -it docker.pkg.github.com/openhab-nodes/core/ohx-core -h` to print a list of command line options to adjust OHX's behaviour.
+- By default `ohx-core` will try to start on http port 8080 and https port 8443.
+  Docker port routing is used to expose OHX to port 80 and 443.
+- OHX core service containers require a few mounted directories.
+  The mentioned start up methods assume that there is a "ohx_root_dir" directory in the working directory.
+- Use  `docker run -rm -it docker.pkg.github.com/openhab-nodes/core/ohx-core -h` to print a list of command line options to adjust OHX's behaviour.
 
 ### Non-container
 
@@ -73,16 +66,8 @@ Alternatively use the `start_containers.sh` file if you do not have access to do
    - Without `ohx-auth` you will not be able to login via the command line utility or the *Setup & Maintenance* Web UI.
    - Without `ohx-ruleengine` scripts and rules are not enabled, but Addon interconnection does work.
 4. You can start additional Addons without using software containers as well.
-   Installing Addons via the *Setup & Maintenance* Web UI is not possible however.
-
-**Logging**: OHX logs are informative logs, no debug outputs.
-They help with following what is going on but are not required to maintain an OHX installation and you can happily use
-OHX without ever looking at the logs.
-- All relevant status data and notifications are accessible on the *Setup & Maintenance* UI and via gRPC API.
-- Telemetry data is feed into InfluxDB (if InfluxDB is running).
-
-Reduce log output with `RUST_LOG=error ohx-core` (standalone) or `docker run ... -e RUST_LOG=error` (docker).
-
+   Installing Addons via the *Setup & Maintenance* Web UI is not possible
+   and security and resource related restrictions cannot be enforced however.
 
 ## Usage
 
@@ -96,24 +81,35 @@ Use `ohx-cli --help` to print all available commands and `ohx-cli the_command --
 Usually you first want to detect running OHX instances by calling `ohx-cli detect` and than select one of the found
 instances to be used for further calls: `ohx-cli login 192.168.1.17:443`.
 
+OHX is a **device interconnect hub** (ie connect a ZWave wall switch with a Zigbee light bulb) as well as
+a smart home implementation via the rule engine.
+If you only require the interconnect functionality, just do not start up `ohx-ruleengine`.
+
+### Logging
+ 
+OHX logs are informative logs, no debug outputs.
+They help with following what is going on but are not required to maintain an OHX installation and you can happily use
+OHX without ever looking at the logs.
+- All relevant status data and notifications are accessible on the *Setup & Maintenance* UI and via gRPC API.
+- Telemetry data is feed into InfluxDB (if InfluxDB is running).
+
+Reduce log output with `RUST_LOG=error ohx-core` (standalone) or `docker run ... -e RUST_LOG=error` (docker).
+
 ### Command line Options
 
 The **OHX Root directory** is by default the working directory.
-You may change this by starting with `ohx-core -c your_directory`.
+You may change this by starting with `ohx-core -r your_directory`.
 By default OHX-Core will create the OHX root directory structure including
 `backups`, `certs`, `config`, `scripts`, `rules` and `webui`, if it not yet exists.
 
 If you provide an https certificate (x509 in *der* format) via `OHX-ROOT/certs/key.der` and `OHX-ROOT/certs/cert.der`,
 OHX Core will use it.
+If no certificates exist, OHX will create a self-signed one valid for one year which is refreshed 14 days before expiry.
 
 **Ports** are set with `ohx-core -p 80 -s 443` for http and https.
 
 **Container service:** OHX will auto-detect if "docker" or "podman" should be used for container management. "podman" is preferred".
 If you want to use "docker" instead, execute with `ohx-core --force-docker`.
-
-OHX is a **device interconnect hub** (ie connect a ZWave wall switch with a Zigbee light bulb) as well as
-a smart home implementation via the rule engine.
-If you only require the interconnect functionality, start with `ohx-core --no-rule-engine`.
 
 OHX-OS applies a filesystem based **quota for persistent storage** per Addon directory.
 It is out of scope for OHX to ensure that limit on a standalone installation accurately.
@@ -131,6 +127,7 @@ In-depth explanations are given on https://openhabx.com. A quick run down on the
 `ohx-core` is a static https file server for web-uis, and a thin supervisor for software containers
 (it uses the `docker` or `podman` CLI interface internally) to install, start and manage OHX Addons.
 - It generates a self-signed https certificate if none is found at start up and redirects http requests to https.
+- It provides a REST-like access (GET/POST/PUT/DELETE) to interconnection configurations, rules, scripts, and general configuration. 
 - Core also routes *Commands* between Addons and between Addons and the *Rule Engine*.
 - It acts as a notification and log access service
 

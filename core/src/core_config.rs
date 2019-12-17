@@ -1,10 +1,8 @@
-//! # The command line configuration is defined in this module.
+//! # The core specific command line configuration is defined in this module.
 
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use structopt::StructOpt;
-
-const ROOT_DIR_NAME: &'static str = "ohx_root_dir";
 
 #[derive(StructOpt, Debug, Clone)]
 pub struct Config {

@@ -40,11 +40,15 @@ warp = {version="0.2.0-alpha.0", git="https://github.com/kornholi/warp", branch=
 
 # Certificates
 rcgen = {version="0.7.0",features=["x509-parser"]}
-chrono = "0.4.9"
+chrono = {version="0.4.9",features=["serde"]}
 x509-parser = "0.6.0"
 
 libohx = {path="../libohx"}
 arc-swap = "0.4.4"
+snafu = "0.6.0"
+semver = "0.9.0"
+valico = "3.1.0"
+async-trait = "0.1.21"
 
 [dev-dependencies]
 tempfile = "3.1.0"

@@ -1,9 +1,8 @@
-use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType, SanType, date_time_ymd, KeyPair, PKCS_ECDSA_P256_SHA256, PKCS_RSA_SHA256};
+use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType, SanType, date_time_ymd, KeyPair, PKCS_ECDSA_P256_SHA256};
 use std::fs;
 
 use log::warn;
 
-use std::thread::sleep;
 use std::fs::File;
 use std::io::{BufReader, Read, ErrorKind};
 use chrono::{Datelike, DateTime, Utc};
@@ -31,17 +30,6 @@ pub fn cert_filename(cert_dir: &Path,format: FileFormat) -> PathBuf {
         FileFormat::DER => cert_dir.join(PUBLIC_FILENAME_DER),
         FileFormat::PEM => cert_dir.join(PUBLIC_FILENAME),
     }
-}
-
-pub fn wait_until_known_time(no_time_wait: bool) -> Result<(), std::io::Error> {
-    // Wait until time is known. Systems without a buffered clock will start with unix timestamp 0 (1970/1/1).
-    let mut now = chrono::Utc::now();
-    while now.year() == 1970 {
-        if no_time_wait { return Err(std::io::Error::new(std::io::ErrorKind::Other, "Time unknown")); }
-        sleep(std::time::Duration::from_secs(2));
-        now = chrono::Utc::now();
-    }
-    Ok(())
 }
 
 pub fn check_gen_certificates(cert_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
