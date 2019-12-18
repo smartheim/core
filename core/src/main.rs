@@ -7,66 +7,54 @@ mod addon_manage_backends;
 mod registries;
 mod ipc;
 mod interconnects;
+mod core_config;
 
 use env_logger::{Env, TimestampPrecision, DEFAULT_FILTER_ENV};
-use std::path::{Path};
+use std::path::Path;
 use structopt::StructOpt;
-use log::{info,error};
+use log::{info, error};
 
-use libohx::{core_config, wait_until_known_time};
+use libohx::{common_config, wait_until_known_time};
+use snafu::Error;
+use futures_util::future::select;
 
-
-fn create_root_directory(dir: &Path) -> Result<(), std::io::Error> {
-    std::fs::create_dir_all(dir.join("addons_http"))?;
-    std::fs::create_dir_all(dir.join("backups"))?;
-    std::fs::create_dir_all(dir.join("certs"))?;
-    std::fs::create_dir_all(dir.join("config"))?;
-    std::fs::create_dir_all(dir.join("interconnects"))?;
-    std::fs::create_dir_all(dir.join("rules"))?;
-    std::fs::create_dir_all(dir.join("scripts"))?;
-    std::fs::create_dir_all(dir.join("webui"))?;
-    Ok(())
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Logging
     let mut builder = env_logger::Builder::from_env(Env::new().filter_or(DEFAULT_FILTER_ENV, "info"));
     builder
         .format_timestamp(Some(TimestampPrecision::Seconds))
         .format_module_path(false)
         .init();
 
+    // Command line / environment / file configuration
     let config: core_config::Config = core_config::Config::from_args();
+    let common_config: common_config::Config = common_config::Config::from_args();
 
-    let path = config.get_root_directory();
-    if !config.create_root && !path.exists() {
-        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "OHX Root directory does not exist. Consider using --create-root").into());
-    }
-    create_root_directory(&path)?;
-
+    create_root_directory(&common_config, &config)?;
     wait_until_known_time(false)?;
-
-    // Create certificates
-    let cert_dir = path.join("certs");
-    certificates::check_gen_certificates(&cert_dir)?;
+    certificates::check_gen_certificates(&common_config.get_certs_directory())?;
 
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
 
     use http_server::HttpService;
-    let mut http_service = HttpService::new(config.get_root_directory());
+    let mut http_service = HttpService::new(common_config.get_root_directory());
 
     let entries = http_service.redirect_entries();
-    entries.add("core".to_owned(),"192.168.1.3".to_owned(),"common".to_owned());
+    entries.add("core".to_owned(), "192.168.1.3".to_owned(), "common".to_owned());
     let entries = http_service.redirect_entries();
-    entries.add("core".to_owned(),"192.168.1.3".to_owned(),"general".to_owned());
+    entries.add("core".to_owned(), "192.168.1.3".to_owned(), "general".to_owned());
 
     // Start certificate refresh task with graceful shutdown warp channel
-    tokio::spawn(async {});
+    let (certificate_refresher, mut cert_watch_shutdown_tx) = certificates::RefreshSelfSigned::new(http_service.control(),common_config.get_certs_directory());
+    tokio::spawn(async move { certificate_refresher.run().await; });
 
     let http_shutdown = http_service.control();
     tokio::spawn(async move {
-        shutdown_rx.recv().await;
+        let _ = shutdown_rx.recv().await;
         http_shutdown.shutdown().await;
+        let _ = cert_watch_shutdown_tx.send(()).await;
     });
 
     // Ctrl+C task
@@ -80,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     if let Err(e) = http_service.run().await {
-        error!("{}",e);
+        error!("{}", e);
     }
 
 //    let mut shutdown_tx_clone = shutdown_tx.clone();
@@ -92,5 +80,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //        }
 //    });
 
+    Ok(())
+}
+
+fn create_root_directory(common_config: &common_config::Config, config: &core_config::Config) -> Result<(), std::io::Error> {
+    let path = common_config.get_root_directory();
+    if !config.create_root && !path.exists() {
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "OHX Root directory does not exist. Consider using --create-root").into());
+    }
+
+    std::fs::create_dir_all(path.join("addons_http"))?;
+    std::fs::create_dir_all(path.join("backups"))?;
+    std::fs::create_dir_all(path.join("certs"))?;
+    std::fs::create_dir_all(path.join("config"))?;
+    std::fs::create_dir_all(path.join("interconnects"))?;
+    std::fs::create_dir_all(path.join("rules"))?;
+    std::fs::create_dir_all(path.join("scripts"))?;
+    std::fs::create_dir_all(path.join("webui"))?;
     Ok(())
 }

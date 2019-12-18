@@ -1,7 +1,6 @@
 //! # The command line configuration is defined in this module.
 
-use std::net::{Ipv4Addr, IpAddr};
-use std::path::PathBuf;
+use std::net::{IpAddr};
 use structopt::StructOpt;
 
 #[derive(StructOpt, Debug, Clone)]

@@ -23,6 +23,11 @@ env_logger = {version="0.7.1",default-features=false,features=["termcolor","huma
 nix = "0.15.0"
 structopt = "0.3.2"
 
+# JsonSchema validation and generation
+valico = "3.1"
+schemars = "0.6"
+
+# Async
 futures-core =  { version = "^0.3.0"}
 futures-util =  { version = "^0.3.0"}
 futures-channel =  { version = "^0.3.0"}

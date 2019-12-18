@@ -21,34 +21,38 @@ is-it-maintained-issue-resolution = { repository = "openhab-nodes/core" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+libohx = {path="../libohx"}
+
 # General
 serde = { version = "1.0.101", features = ["derive"] }
 serde_json = "1.0.41"
-serde_derive = "1.0.101"
 log = "0.4.8"
 env_logger = {version="0.7.1",default-features=false,features=["termcolor","humantime"]}
 nix = "0.15.0"
 structopt = "0.3.4"
+arc-swap = "0.4.4"
+snafu = "0.6.0"
+semver = "0.9.0"
 
 futures-core =  { version = "^0.3.0"}
 futures-util =  { version = "^0.3.0"}
 futures-channel =  { version = "^0.3.0"}
-tokio = { version = "^0.2.0", features = ["sync","net","signal","time"] }
+tokio = { version = "^0.2.0", features = ["sync","net","signal","time","rt-util","rt-core","macros"] }
 pin-project = "0.4.6"
+async-trait = "0.1.21"
+
+# IPC and API
 tarpc = {version="0.18.0", features=["full"], git="https://github.com/google/tarpc"}
-warp = {version="0.2.0-alpha.0", git="https://github.com/kornholi/warp", branch="feat/tokio-0.2",features=["tls"]}
+warp = {version="0.2.0-alpha.0", git="https://github.com/seanmonstar/warp",features=["tls"]}
+
+# JsonSchema validation and generation
+valico = "3.1"
+schemars = "0.6"
 
 # Certificates
 rcgen = {version="0.7.0",features=["x509-parser"]}
 chrono = {version="0.4.9",features=["serde"]}
 x509-parser = "0.6.0"
-
-libohx = {path="../libohx"}
-arc-swap = "0.4.4"
-snafu = "0.6.0"
-semver = "0.9.0"
-valico = "3.1.0"
-async-trait = "0.1.21"
 
 [dev-dependencies]
 tempfile = "3.1.0"

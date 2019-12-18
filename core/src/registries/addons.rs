@@ -83,7 +83,7 @@ impl Drop for StatusEmitter {
     }
 }
 
-/// * List IoServiceInstances of Addons
-/// * List Things of Addons
-/// * Execute command on Addon
-/// * Register to property changes
+// * List IoServiceInstances of Addons
+// * List Things of Addons
+// * Execute command on Addon
+// * Register to property changes
