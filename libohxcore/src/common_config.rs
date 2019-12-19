@@ -30,6 +30,10 @@ pub struct Config {
     /// Comma separated list of addon registry urls. An addon registry must adhere to the Docker Registry APIv2.
     #[structopt(short, long, env = "OHX_ADDON_REGISTRIES")]
     pub addon_registries: Vec<String>,
+
+    /// Tells OHX core services that they run in a container.
+    #[structopt(long, env = "OHX_CONTAINER_MODE")]
+    pub container_mode: bool,
 }
 
 
@@ -40,7 +44,8 @@ impl Config {
             certs_directory: None,
             network_interfaces: vec![],
             influx_addr: None,
-            addon_registries: vec![]
+            addon_registries: vec![],
+            container_mode: false
         }
     }
     pub fn get_root_directory(&self) -> PathBuf {

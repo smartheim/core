@@ -1,5 +1,5 @@
 [workspace]
-members=["auth","core","cli","libohxcore","libohxaddon","ruleengine"]
+members=["auth","core","serve","cli","libohxcore","libohxaddon","ruleengine"]
 
 [profile.release]
 lto = true

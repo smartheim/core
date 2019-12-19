@@ -1,7 +1,5 @@
 #![feature(associated_type_defaults)]
 
-mod certificates;
-mod http;
 mod errors;
 mod addons;
 mod ioservices;
@@ -18,7 +16,7 @@ use snafu::Error;
 use futures_util::future::select;
 
 use libohxcore::{common_config, wait_until_known_time};
-use http::service::HttpService;
+use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,28 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     create_root_directory(&common_config, &config)?;
     wait_until_known_time(false)?;
-    certificates::check_gen_certificates(&common_config.get_certs_directory())?;
 
-    let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
-
-
-    let mut http_service = HttpService::new(common_config.get_root_directory());
-
-    let entries = http_service.redirect_entries();
-    entries.add("core".to_owned(), "192.168.1.3".to_owned(), "common".to_owned());
-    let entries = http_service.redirect_entries();
-    entries.add("core".to_owned(), "192.168.1.3".to_owned(), "general".to_owned());
-
-    // Start certificate refresh task with graceful shutdown warp channel
-    let (certificate_refresher, mut cert_watch_shutdown_tx) = certificates::RefreshSelfSigned::new(http_service.control(),common_config.get_certs_directory());
-    tokio::spawn(async move { certificate_refresher.run().await; });
-
-    let http_shutdown = http_service.control();
-    tokio::spawn(async move {
-        let _ = shutdown_rx.recv().await;
-        http_shutdown.shutdown().await;
-        let _ = cert_watch_shutdown_tx.send(()).await;
-    });
+    let (mut shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
 
     // Ctrl+C task
     let mut shutdown_tx_clone = shutdown_tx.clone();
@@ -68,19 +46,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    if let Err(e) = http_service.run().await {
-        error!("{}", e);
-    }
-
-//    let mut shutdown_tx_clone = shutdown_tx.clone();
-//    tokio::spawn(async move {
-//        loop {
-//            let _ = tokio::time::delay_for(Duration::from_secs(3)).await;
-//            info!("Timeout: Shutting down");
-//            shutdown_tx_clone.send(()).await.unwrap();
-//        }
-//    });
-
+    let _ = tokio::time::delay_for(Duration::from_secs(3)).await;
+    shutdown_tx.send(()).await.unwrap();
     Ok(())
 }
 

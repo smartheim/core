@@ -5,15 +5,22 @@
 
 > OHX is a modern Smart Home solution, embracing technologies like software containers for language agnostic extensibility. Written in Rust with an extensive test suite, OHX is fast, efficient, secure and fun to work on.
 
-OHX Core consists of multiple services that work in tandem to form a Smart Home solution.
+OHX Core consists of multiple services that work in tandem to form a vendor crossing **device interconnect hub** 
+(ie connect a ZWave wall switch with a Zigbee light bulb) and Smart Home solution.
 Find the individual projects in their respective subdirectories.
-You usually want to use OHX Addons for specific device support.
+You usually want to use additional OHX Addons for specific device support.
 
 For a ready to use operating system image for single board computers and regular PCs (and virtual machines),
 you might also be interested in [OHX OS](https://github.com/openhab-nodes/ohx-os/).
 
-> OHX Core Services are safe to be exposed to the Internet and implement various anti-abuse techniques
-like IP rate limiting, Authentication, limited backpressure queues and limited input buffers.
+> OHX Core Services are safe to be exposed to the Internet and implement encryption, authentication various anti-abuse techniques
+like IP rate limiting, limited backpressure queues, limited input buffers and safe packet parsing.
+
+
+!!! WARNING !!!
+
+This is not yet an [MVP](https://en.wikipedia.org/wiki/Minimum_viable_product).
+Only certain parts work and will break again during development.
 
 ## Table of Contents
 
@@ -21,7 +28,7 @@ like IP rate limiting, Authentication, limited backpressure queues and limited i
 	1. [Via software containers (Recommened)](#via-software-containers-recommened)
 	1. [Non-container](#non-container)
 1. [Usage](#usage)
-	1. [Command line Options](#command-line-options)
+1. [Logging](#logging)
 1. [Architecture](#architecture)
 1. [Compile and Contribute](#compile-and-contribute)
 1. [How to develop Addons](#how-to-develop-addons)
@@ -48,8 +55,8 @@ If no such support is installed, you will not be able to install/uninstall/manag
 Use the `docker-compose.yml` file to start all relevant containers.
 Alternatively use the `start_containers.sh` file if you do not have access to docker compose.
 
-- By default `ohx-core` will try to start on http port 8080 and https port 8443.
-  Docker port routing is used to expose OHX to port 80 and 443.
+- By default OHX core services will try to start on http port 8080 and https port 8443.
+  Docker port routing is used to expose OHX on port 80 and 443.
 - OHX core service containers require a few mounted directories.
   The mentioned start up methods assume that there is a "ohx_root_dir" directory in the working directory.
 - Use  `docker run -rm -it docker.pkg.github.com/openhab-nodes/core/ohx-core -h` to print a list of command line options to adjust OHX's behaviour.
@@ -60,12 +67,16 @@ Alternatively use the `start_containers.sh` file if you do not have access to do
    Find it on the [releases page](https://github.com/openhab-nodes/core/releases).
 2. Your operating system may prevent the use of "system" ports (ports below 1024).
    If you want port 80 and port 443, add the NET_BINDSERVICE capability on Linux / Mac OS like so:
-   `sudo setcap CAP_NET_BIND_SERVICE=+eip ./ohx-core`
-3. Start the `ohx-auth`, `ohx-core`, `ohx-ruleengine` binaries. 
-   - Call `ohx-core -h` to print a list of command line options to adjust OHX's behaviour.
-   - Without `ohx-auth` you will not be able to login via the command line utility or the *Setup & Maintenance* Web UI.
-   - Without `ohx-ruleengine` scripts and rules are not enabled, but Addon interconnection does work.
-4. You can start additional Addons without using software containers as well.
+   `sudo setcap CAP_NET_BIND_SERVICE=+eip ./ohx-serve`
+3. Start the `ohx-core`, `ohx-auth`, `ohx-serve`, `ohx-ruleengine` binaries.
+   You must start `ohx-core`, all other binaries provide additional features.
+   Check the architecture section below to get to know more.
+   You might want to start via `sh start.sh` on the command line.
+  
+Call `ohx-core -h` or any other binary to print a list of command line options to adjust OHX's behaviour.
+ Each binary has its own unique command line flags. Check the individual readmes.
+
+> You can start additional Addons without using software containers as well.
    Installing Addons via the *Setup & Maintenance* Web UI is not possible
    and security and resource related restrictions cannot be enforced however.
 
@@ -80,66 +91,48 @@ Use `ohx-cli --help` to print all available commands and `ohx-cli the_command --
 
 Usually you first want to detect running OHX instances by calling `ohx-cli detect` and than select one of the found
 instances to be used for further calls: `ohx-cli login 192.168.1.17:443`.
-
-OHX is a **device interconnect hub** (ie connect a ZWave wall switch with a Zigbee light bulb) as well as
-a smart home implementation via the rule engine.
-If you only require the interconnect functionality, just do not start up `ohx-ruleengine`.
-
+ 
 ### Logging
  
 OHX logs are informative logs, no debug outputs.
 They help with following what is going on but are not required to maintain an OHX installation and you can happily use
 OHX without ever looking at the logs.
-- All relevant status data and notifications are accessible on the *Setup & Maintenance* UI and via gRPC API.
+- All relevant status data and notifications are accessible on the *Setup & Maintenance* UI and via the gRPC API.
 - Telemetry data is feed into InfluxDB (if InfluxDB is running).
 
 Reduce log output with `RUST_LOG=error ohx-core` (standalone) or `docker run ... -e RUST_LOG=error` (docker).
 
-### Command line Options
-
-The **OHX Root directory** is by default the working directory.
-You may change this by starting with `ohx-core -r your_directory`.
-By default OHX-Core will create the OHX root directory structure including
-`backups`, `certs`, `config`, `scripts`, `rules` and `webui`, if it not yet exists.
-
-If you provide an https certificate (x509 in *der* format) via `OHX-ROOT/certs/key.der` and `OHX-ROOT/certs/cert.der`,
-OHX Core will use it.
-If no certificates exist, OHX will create a self-signed one valid for one year which is refreshed 14 days before expiry.
-
-**Ports** are set with `ohx-core -p 80 -s 443` for http and https.
-
-**Container service:** OHX will auto-detect if "docker" or "podman" should be used for container management. "podman" is preferred".
-If you want to use "docker" instead, execute with `ohx-core --force-docker`.
-
-OHX-OS applies a filesystem based **quota for persistent storage** per Addon directory.
-It is out of scope for OHX to ensure that limit on a standalone installation accurately.
-A best effort approach is used (by watching directories and checking file sizes once in a while),
-which simply stops an Addon that exceeds the quota. You can disable this via `ohx-core --disable-quota-enforcement`.
-
-**Self healing**: OHX Core tries its best to keep running and cope with certain conditions
-like expired certificates, low disk space and low memory.
-Set policies for each condition, for example `ohx-core --low-memory-policy=gradually-restart-addons --low-disk-space-policy=stop-addons`.
-
 ## Architecture
 
-In-depth explanations are given on https://openhabx.com. A quick run down on the architecture follows.
+In-depth explanations are given on https://openhabx.com. A quick run down on individual service responsibilities follows.
 
-`ohx-core` is a static https file server for web-uis, and a thin supervisor for software containers
-(it uses the `docker` or `podman` CLI interface internally) to install, start and manage OHX Addons and access Addon logs.
-- It generates a self-signed https certificate if none is found at start up and redirects http requests to https.
-- It provides a REST-like access (GET/POST/PUT/DELETE) to interconnection configurations, rules, scripts, and general configuration. 
+`ohx-core` is a thin supervisor for software containers (it uses the `docker` or `podman` CLI interface internally)
+  to install, start and manage OHX Addons and access Addon logs.
 - Core provides the interconnection service.
   This service reacts on Addon Thing property changes and sends corresponding *Commands* to Addons.
-- It acts as a notification service
+- IOServices are provided with changed Addon Thing property, if the configured filters pass and
+  received *Commands* are routed to Addons if, again, the configured filters pass.
+- ohx-core acts as a notification service. Addons can extend the service by providing additional notification channels.
+- Backup strategies are executed by core. 
+
+`ohx-serve` is a static https file server for web-uis.
+- It generates a self-signed https certificate if none is found at start up and redirects http requests to https.
+- It provides a REST-like access (GET/POST/PUT/DELETE) to ioservice and interconnection configurations, rules, scripts, and general configuration. 
+- Without `ohx-serve` there will be no http(s) server, so no *Setup & Maintenance* Web UI and no way to
+ manipulate configurations, rules, scripts via a web API. You can still just alter the file files for configuration.
 
 `ohx-ruleengine` is an [Event, Condition, Action](https://en.wikipedia.org/wiki/Event_condition_action) rule engine.
  Addons can register additional "Events", "Conditions", "Actions" and "Transformations" types.
  Please check the Rust generated documentation as well as the more detailed rule engine [readme](ruleengine/readme.md).
+- Without `ohx-ruleengine` scripts and rules are not enabled, but Addon interconnection does work.
+If you only require the interconnect functionality, just do not start up `ohx-ruleengine`.
 
 `ohx-auth` is an Identity and Access Management service, based on OAuth. User accounts are stored in flat files.
 It also manages extern OAuth Tokens and token refreshing, like the https://openhabx.com cloud link for
 Amazon Alexa and Google Home support.
-
+- Without `ohx-auth` you will not be able to login via the command line utility or the *Setup & Maintenance* Web UI.
+ Some Addons require periodic token refreshing. Those Addons will not work.
+ 
 ## Compile and Contribute
 
 OHX is written in [Rust](https://rustup.rs/).
@@ -148,9 +141,11 @@ Compile with `cargo build` and for production binaries use `cargo build --releas
 
 Run with `cargo run`.
 
-PRs are welcome. A PR is expected to be under the same license as the repository itself.
-Newly introduced dependencies must be under any of the following licenses: MIT, Apache 2, BSD.
-OHX follows [Semantic Versioning](http://semver.org/) for versioning.
+PRs are welcome.
+* A PR is expected to be under the same license as the repository itself and must pass the
+test suite which includes being formatted with `rustfmt`.
+* Newly introduced dependencies must be under any of the following licenses: MIT, Apache 2, BSD.
+* OHX follows [Semantic Versioning](http://semver.org/) for versioning.
 Each service in this repository is versioned on its own.
 
 ## How to develop Addons
