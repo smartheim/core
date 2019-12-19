@@ -1,7 +1,9 @@
 pub mod common_config;
-pub mod addon_startup_config;
+pub mod command;
 pub mod discovery;
 pub mod meta;
+pub mod addon;
+pub mod acl;
 
 use log::warn;
 

@@ -4,6 +4,8 @@ use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
+use libohxcore::common_config;
+
 #[derive(StructOpt, Debug, Clone)]
 pub struct Config {
     /// The rules storage directory. The default is ohx_root_directory/rules.
@@ -29,13 +31,13 @@ impl Config {
             ruleengine_config_directory: None,
         }
     }
-    pub fn get_rules_directory(&self, common_config: libohx::common_config::Config) -> PathBuf {
+    pub fn get_rules_directory(&self, common_config: common_config::Config) -> PathBuf {
         self.rules_directory.clone().unwrap_or(common_config.get_root_directory().join("rules"))
     }
-    pub fn get_scripts_directory(&self, common_config: libohx::common_config::Config) -> PathBuf {
+    pub fn get_scripts_directory(&self, common_config: common_config::Config) -> PathBuf {
         self.scripts_directory.clone().unwrap_or(common_config.get_root_directory().join("scripts"))
     }
-    pub fn get_config_directory(&self, common_config: libohx::common_config::Config) -> PathBuf {
+    pub fn get_config_directory(&self, common_config: common_config::Config) -> PathBuf {
         self.ruleengine_config_directory.clone().unwrap_or(common_config.get_root_directory().join("config/ohx-ruleengine"))
     }
 }

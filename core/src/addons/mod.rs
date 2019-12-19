@@ -1,10 +1,11 @@
+mod docker_cli;
+mod addon_registry;
+mod management_backend;
+
 use semver::Version;
 use tokio::io::AsyncBufRead;
 use futures_core::future::BoxFuture;
 use futures_core::stream::BoxStream;
-use futures_core::Stream;
-use futures_core::task::{Context, Poll};
-use std::pin::Pin;
 
 #[derive(Clone)]
 pub struct AddonInstanceReference<'a> {
@@ -68,22 +69,3 @@ pub struct AddonInstanceWithStatus {
     failed_health_checks: u32,
     details_i18n: String,
 }
-
-//TODO
-pub struct StatusEmitter {
-    inner: tokio::sync::watch::Receiver<()>,
-    abort: Option<std::sync::mpsc::Sender<()>>,
-}
-
-impl Drop for StatusEmitter {
-    fn drop(&mut self) {
-        if let Some(sender) = self.abort.take() {
-            let _ = sender.send(());
-        }
-    }
-}
-
-// * List IoServiceInstances of Addons
-// * List Things of Addons
-// * Execute command on Addon
-// * Register to property changes

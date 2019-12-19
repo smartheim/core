@@ -125,22 +125,16 @@ Set policies for each condition, for example `ohx-core --low-memory-policy=gradu
 In-depth explanations are given on https://openhabx.com. A quick run down on the architecture follows.
 
 `ohx-core` is a static https file server for web-uis, and a thin supervisor for software containers
-(it uses the `docker` or `podman` CLI interface internally) to install, start and manage OHX Addons.
+(it uses the `docker` or `podman` CLI interface internally) to install, start and manage OHX Addons and access Addon logs.
 - It generates a self-signed https certificate if none is found at start up and redirects http requests to https.
 - It provides a REST-like access (GET/POST/PUT/DELETE) to interconnection configurations, rules, scripts, and general configuration. 
-- Core also routes *Commands* between Addons and between Addons and the *Rule Engine*.
-- It acts as a notification and log access service
+- Core provides the interconnection service.
+  This service reacts on Addon Thing property changes and sends corresponding *Commands* to Addons.
+- It acts as a notification service
 
 `ohx-ruleengine` is an [Event, Condition, Action](https://en.wikipedia.org/wiki/Event_condition_action) rule engine.
-It uses Yaml files to express rules for easy backups, and rule sharing.
-- Addons can register additional "Events", "Conditions", "Actions" and "Transformations".
-  A "transformation" transforms an input value (for example an MQTT string value) into something else (for example an OHX Color Value).
-- The rule engine provides pre-defined elements. This includes time based "Events" via an internal scheduler, starting /stopping other rules,
-  acting on Addon state changes and commands and starting scripts.
-- The rule engine is consciously limited but offers an extension point ("scripts").
-  Scripts can be used for "Conditions", "Actions" and "Transformations".
-  A script will be executed / compiled according to its extension.
-- A rule can be a singleton (only one rule of that type can run at a time) or run in multiple instances.
+ Addons can register additional "Events", "Conditions", "Actions" and "Transformations" types.
+ Please check the Rust generated documentation as well as the more detailed rule engine [readme](ruleengine/readme.md).
 
 `ohx-auth` is an Identity and Access Management service, based on OAuth. User accounts are stored in flat files.
 It also manages extern OAuth Tokens and token refreshing, like the https://openhabx.com cloud link for
@@ -184,7 +178,7 @@ Despite everyone’s best efforts, security incidents are inevitable in an incre
 OHX is written in Rust to avoid common memory access and memory management pitfalls, even for new contributors.
 
 Industry standards like OAuth and https are used on the external interface level.
-Encryption and https certificate management is based on Rustls and Ring, two very well maintained Rust crates.
+Encryption and https certificate management is based on Rustls and Ring (based on boringssl), two very well maintained Rust crates.
 No openSSL or C legacy involved.
 
 **On Linux only**: Modern operating system kernel features restrict internet provided executables ("Scripts", "Addons")
@@ -202,10 +196,11 @@ Report any findings to security@openhabx.com.
 
 ## Maintainer: Core Deployment
 
-Update the CHANGELOG file before releasing! Use shell scripts that are found in `scripts/`:
+Update the CHANGELOG file before releasing! Use shell scripts for deployment that are found in `scripts/`:
 
 * build.sh: Cross compile for x86_64, armv7l, aarch64 as static musl binaries
-* deploy.sh: Deploy to Github Releases and Github Package Registry (Docker container)
+* deploy.sh: Deploy to Github Releases as zipped distribution
+  and to the Github Package Registry as Docker container, both including the latest revision of the **Setup & Maintenance** Web-UI.
 
 -----
  David Gräff, 2019

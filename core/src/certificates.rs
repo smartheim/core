@@ -11,7 +11,7 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 pub use snafu::{ResultExt, Snafu};
-use crate::http_server::HttpServiceControl;
+use crate::http::service::HttpServiceControl;
 
 #[derive(Debug, Snafu)]
 pub enum Error {

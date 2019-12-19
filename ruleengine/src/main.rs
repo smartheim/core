@@ -10,7 +10,7 @@ use std::path::Path;
 use structopt::StructOpt;
 use log::{info, error};
 
-use libohx::{wait_until_known_time, wait_for_root_directory, common_config};
+use libohxcore::{wait_until_known_time, wait_for_root_directory, common_config};
 use std::time::Duration;
 
 #[tokio::main]

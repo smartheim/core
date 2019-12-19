@@ -1,14 +1,13 @@
-mod docker_cli;
-
 use async_trait::async_trait;
 use semver::Version;
 use tokio::io::AsyncBufRead;
 use futures_core::future::BoxFuture;
 use futures_core::stream::BoxStream;
-use crate::registries::addons::{AddonEntry, StatusEmitter, AddonManagementOptions, AddonInstanceReference};
+use crate::addons::{AddonEntry, AddonInstanceReference, AddonManagementOptions};
+use crate::notifications::StatusEmitter;
 
 #[async_trait]
-trait Backend {
+pub trait Backend {
     async fn get_addon(&self, addon_id: &str, version: Version) -> Option<AddonEntry>;
     async fn get_addon_list(&self) -> Vec<AddonEntry>;
 

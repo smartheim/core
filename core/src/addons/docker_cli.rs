@@ -1,9 +1,13 @@
-use crate::addon_manage_backends::*;
 use semver::Version;
-use crate::registries::addons::{AddonManagementOptions, AddonEntry, AddonInstanceReference, StatusEmitter};
 use tokio::io::AsyncBufRead;
 
+use crate::addons::{AddonManagementOptions, AddonEntry, AddonInstanceReference};
+use crate::notifications::StatusEmitter;
+
 struct DockerCLI {}
+
+use async_trait::async_trait;
+use crate::addons::management_backend::Backend;
 
 #[async_trait]
 impl Backend for DockerCLI {

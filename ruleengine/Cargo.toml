@@ -14,7 +14,7 @@ is-it-maintained-issue-resolution = { repository = "openhab-nodes/core" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-libohx = {path="../libohx"}
+libohxcore = {path="../libohxcore"}
 
 # General
 serde = { version = "1.0.101", features = ["derive"] }

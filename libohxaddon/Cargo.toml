@@ -1,10 +1,10 @@
 [package]
-name = "ohx-core"
+name = "libohxaddon"
 version = "0.1.0"
 authors = ["David Graeff <david.graeff@web.de>"]
 description = "OHX is a modern smarthome solution, embracing technologies like software containers for language agnostic extensibility. Written in Rust with an extensive test suite, OHX is fast, efficient, secure and fun to work on."
 readme = "../readme.md"
-homepage = "https://github.com/openhab-nodes/core"
+homepage = "https://github.com/openhab-nodes/core/libohx"
 repository = "https://github.com/openhab-nodes/core"
 keywords = ["smarthome","smart-home"]
 categories = []
@@ -21,38 +21,29 @@ is-it-maintained-issue-resolution = { repository = "openhab-nodes/core" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-libohxcore = {path="../libohxcore"}
-
 # General
 serde = { version = "1.0.101", features = ["derive"] }
 serde_json = "1.0.41"
 log = "0.4.8"
-env_logger = {version="0.7.1",default-features=false,features=["termcolor","humantime"]}
-nix = "0.15.0"
-structopt = "0.3.4"
-arc-swap = "0.4.4"
-snafu = "0.6.0"
-semver = "0.9.0"
+structopt = "0.3.2"
+chrono = "0.4.9"
+semver = {version="0.9", features=["serde"]}
 
+# Discovery
+socket2 = {version="0.3", features=["reuseport"]}
+getaddrs = {version= "0.1.0",optional=true}
+
+# JsonSchema validation and generation
+valico = "3.1.0"
+schemars = "0.6.1"
+
+# Async
 futures-core =  { version = "^0.3.0"}
 futures-util =  { version = "^0.3.0"}
 futures-channel =  { version = "^0.3.0"}
-tokio = { version = "^0.2.0", features = ["sync","net","signal","time","rt-util","rt-core","macros"] }
+tokio = { version = "^0.2.0", features = ["sync","net","time","rt-util","rt-core"] }
 pin-project = "0.4.6"
-async-trait = "0.1.21"
-
-# IPC and API
-tarpc = {version="0.18.0", features=["full"], git="https://github.com/google/tarpc"}
-warp = {version="0.2.0-alpha.0", git="https://github.com/seanmonstar/warp",features=["tls"]}
-
-# JsonSchema validation and generation
-valico = "3.1"
-schemars = "0.6"
-
-# Certificates
-rcgen = {version="0.7.0",features=["x509-parser"]}
-chrono = {version="0.4.9",features=["serde"]}
-x509-parser = "0.6.0"
 
 [dev-dependencies]
-tempfile = "3.1.0"
+tokio = { version = "^0.2.0", features = ["sync","net","time","rt-util","rt-core","macros"] }
+env_logger = {version="0.7.1",default-features=false,features=["termcolor","humantime"]}

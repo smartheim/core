@@ -1,5 +1,5 @@
 [package]
-name = "libohx"
+name = "libohxcore"
 version = "0.1.0"
 authors = ["David Graeff <david.graeff@web.de>"]
 description = "OHX is a modern smarthome solution, embracing technologies like software containers for language agnostic extensibility. Written in Rust with an extensive test suite, OHX is fast, efficient, secure and fun to work on."
@@ -28,6 +28,7 @@ log = "0.4.8"
 structopt = "0.3.2"
 chrono = "0.4.9"
 semver = {version="0.9", features=["serde"]}
+snafu = "0.6.0"
 
 # Discovery
 socket2 = {version="0.3", features=["reuseport"]}
@@ -43,6 +44,7 @@ futures-util =  { version = "^0.3.0"}
 futures-channel =  { version = "^0.3.0"}
 tokio = { version = "^0.2.0", features = ["sync","net","time","rt-util","rt-core"] }
 pin-project = "0.4.6"
+notify = "5.0.0-pre.1"
 
 [dev-dependencies]
 tokio = { version = "^0.2.0", features = ["sync","net","time","rt-util","rt-core","macros"] }

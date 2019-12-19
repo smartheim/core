@@ -1,23 +1,24 @@
 #![feature(associated_type_defaults)]
 
 mod certificates;
-mod http_server;
+mod http;
 mod errors;
-mod addon_manage_backends;
-mod registries;
+mod addons;
+mod ioservices;
 mod ipc;
-mod interconnects;
+mod thing_interconnects;
 mod core_config;
+mod notifications;
 
 use env_logger::{Env, TimestampPrecision, DEFAULT_FILTER_ENV};
 use std::path::Path;
 use structopt::StructOpt;
 use log::{info, error};
-
-use libohx::{common_config, wait_until_known_time};
 use snafu::Error;
 use futures_util::future::select;
 
+use libohxcore::{common_config, wait_until_known_time};
+use http::service::HttpService;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
 
-    use http_server::HttpService;
+
     let mut http_service = HttpService::new(common_config.get_root_directory());
 
     let entries = http_service.redirect_entries();
