@@ -77,7 +77,9 @@ pub struct Config {
     /// Addon Management happens via Docker or Podman. This is auto-detected during runtime and podman
     /// is preferred. Set this option to force using docker instead.
     #[structopt(long, env = "OHX_FORCE_DOCKER")]
-    pub force_docker: bool
+    pub force_docker: bool,
+    #[structopt(flatten)]
+    pub(crate) common: common_config::Config
 }
 
 
@@ -90,7 +92,8 @@ impl Config {
             low_memory_policy:LowMemoryPolicy::GraduallyRestartAddons,
             low_disk_space_policy: LowDiskSpacePolicy::StopAddons,
             disable_quota_enforcement: false,
-            force_docker: false
+            force_docker: false,
+            common: common_config::Config::new()
         }
     }
     pub fn get_interconnects_directory(&self, common_config: common_config::Config) -> PathBuf {

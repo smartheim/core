@@ -6,7 +6,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 Testing release
 
-* Core: Static file server, Addon Management, gRPC+http interface for Addon Management
+* Core: Addon Management, gRPC interface
+* Serve: Static file server, http interface
 * CLI: Addon-, Account Management
 * Auth: Account creation, gRPC interface, http OAuth interface
-* RuleEngine: YAML rule parsing, gRCP interface, script engines, rust script engine
+* RuleEngine: YAML rule parsing, gRCP interface, script engine

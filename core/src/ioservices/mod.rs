@@ -9,6 +9,7 @@ pub mod ioservice_store;
 
 use libohxcore::acl::{Access, UserID, self};
 use std::collections::BTreeMap;
+use libohxcore::command::Command;
 
 
 pub type IOServiceInstanceID = String;
@@ -34,12 +35,12 @@ pub struct PropertyValue(serde_json::Value);
 
 pub struct IOServiceInterconnect {
     connections: BTreeMap<IOServiceInstanceID, Entry>,
-    command_receiver: tokio::sync::mpsc::Receiver<serde_json::Value>,
-    command_sender: tokio::sync::mpsc::Sender<serde_json::Value>,
+    command_receiver: tokio::sync::mpsc::Receiver<Command>,
+    command_sender: tokio::sync::mpsc::Sender<Command>,
 }
 
 pub struct IOServiceCommandPublisher {
-    command_sender: tokio::sync::mpsc::Sender<serde_json::Value>,
+    command_sender: tokio::sync::mpsc::Sender<Command>,
 }
 
 
@@ -51,13 +52,9 @@ pub struct IOServiceCommandPublisher {
 /// * store on update/remove without reload
 impl IOServiceInterconnect {
     pub fn new() -> Self {
-        let (command_sender, command_receiver) = tokio::sync::mpsc::channel::<serde_json::Value>(1);
+        let (command_sender, command_receiver) = tokio::sync::mpsc::channel::<Command>(1);
         IOServiceInterconnect { connections: Default::default(), command_receiver, command_sender }
     }
-
-    pub fn store(&self) {}
-
-    pub fn load(&mut self) {}
 
     pub async fn property_changed(&mut self, addon_id: &str, thing_uid: &str, prop_name: &str, context_properties: BTreeMap<String,PropertyValue>) {}
 

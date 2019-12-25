@@ -20,6 +20,8 @@ pub struct Config {
     /// The directory will be watched for changed files.
     #[structopt(parse(from_os_str), long, env = "OHX_RULEENGINE_CONFIG_DIRECTORY")]
     pub ruleengine_config_directory: Option<PathBuf>,
+    #[structopt(flatten)]
+    pub(crate) common: common_config::Config
 }
 
 
@@ -29,6 +31,7 @@ impl Config {
             rules_directory: None,
             scripts_directory: None,
             ruleengine_config_directory: None,
+            common: common_config::Config::new()
         }
     }
     pub fn get_rules_directory(&self, common_config: common_config::Config) -> PathBuf {

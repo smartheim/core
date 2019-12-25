@@ -1,6 +1,5 @@
 //! # The core specific command line configuration is defined in this module.
 
-use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -16,6 +15,8 @@ pub struct Config {
     /// The directory will be watched for changed files.
     #[structopt(parse(from_os_str), long, env = "OHX_SERVE_CONFIG_DIRECTORY")]
     pub serve_config_directory: Option<PathBuf>,
+    #[structopt(flatten)]
+    pub(crate) common: common_config::Config
 }
 
 
@@ -24,12 +25,13 @@ impl Config {
         Config {
             webui_directory: None,
             serve_config_directory: None,
+            common: common_config::Config::new()
         }
     }
     pub fn get_webui_directory(&self, common_config: common_config::Config) -> PathBuf {
         self.webui_directory.clone().unwrap_or(common_config.get_root_directory().join("webui"))
     }
     pub fn get_config_directory(&self, common_config: common_config::Config) -> PathBuf {
-        self.serve_config_directory.clone().unwrap_or(common_config.get_root_directory().join("config/ohx-core"))
+        self.serve_config_directory.clone().unwrap_or(common_config.get_root_directory().join("config/ohx-serve"))
     }
 }

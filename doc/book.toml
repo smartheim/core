@@ -1,0 +1,32 @@
+[book]
+title = "The OHX Developer Documentation"
+description = "An introductory guide to make you familiar with design principles, the project philosophy, overall architecture as well component specific architectures."
+authors = ["David Graeff"]
+language = "en"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/openhab-nodes/core"
+mathjax-support = true
+additional-css = ["mermaid.css"]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+
+[output.html.playpen]
+editable = true
+line-numbers = true
+
+[output.html.search]
+limit-results = 20
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 2
+boost-paragraph = 1
+expand = true
+heading-split-level = 2
+
+[preprocessor.toc]
+command = "mdbook-toc"
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+renderer = ["html"]

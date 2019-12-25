@@ -7,15 +7,16 @@ mod ipc;
 mod thing_interconnects;
 mod core_config;
 mod notifications;
+mod create_http_certificate;
+mod create_system_user;
 
 use env_logger::{Env, TimestampPrecision, DEFAULT_FILTER_ENV};
 use std::path::Path;
 use structopt::StructOpt;
 use log::{info, error};
 use snafu::Error;
-use futures_util::future::select;
 
-use libohxcore::{common_config, wait_until_known_time};
+use libohxcore::{common_config, wait_until_known_time, shutdown_on_ctrl_c};
 use std::time::Duration;
 
 #[tokio::main]
@@ -29,25 +30,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Command line / environment / file configuration
     let config: core_config::Config = core_config::Config::from_args();
-    let common_config: common_config::Config = common_config::Config::from_args();
-
-    create_root_directory(&common_config, &config)?;
-    wait_until_known_time(false)?;
-
     let (mut shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
 
-    // Ctrl+C task
-    let mut shutdown_tx_clone = shutdown_tx.clone();
-    tokio::spawn(async move {
-        loop {
-            let _ = tokio::signal::ctrl_c().await;
-            info!("Ctrl+C: Shutting down");
-            shutdown_tx_clone.send(()).await.unwrap();
-        }
+    shutdown_on_ctrl_c(shutdown_tx.clone());
+    create_root_directory(&config.common, &config)?;
+    create_system_user::create_check_system_user(&config.common.get_certs_directory())?;
+    wait_until_known_time(false).await?;
+
+    // Check and create self signed cert. Start certificate refresh task with graceful shutdown warp channel
+    create_http_certificate::check_gen_certificates(&config.common.get_certs_directory())?;
+    let (certificate_refresher, mut cert_watch_shutdown_tx) = create_http_certificate::RefreshSelfSigned::new(config.common.get_certs_directory());
+    tokio::spawn(async move { certificate_refresher.run().await; });
+
+    // Shutdown task
+    let mut shutdown = tokio::spawn(async move {
+        let _ = shutdown_rx.recv().await;
+        let _ = cert_watch_shutdown_tx.send(());
     });
 
     let _ = tokio::time::delay_for(Duration::from_secs(3)).await;
     shutdown_tx.send(()).await.unwrap();
+
+    let _ = shutdown.await;
     Ok(())
 }
 

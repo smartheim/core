@@ -3,15 +3,19 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use warp::{Filter, Rejection, Buf, hyper, hyper::Body, Reply, http::{header, HeaderMap, Uri, self}};
-use warp::reply::WithHeader;
 use std::net::IpAddr;
 use serde::{Deserialize, Serialize};
 
-use log::{info, warn};
+use log::{info, warn, error};
 
 pub use snafu::{ResultExt, Snafu};
 use arc_swap::{ArcSwap, ArcSwapOption};
 use std::collections::BTreeMap;
+use notify::{RecursiveMode, watcher};
+use crossbeam_channel::bounded;
+use std::time::Duration;
+use futures_util::future::Either;
+use std::pin::Pin;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -23,6 +27,10 @@ pub enum Error {
 
     #[snafu(display("URI Path Builder failed: {}", "source"))]
     UriPathBuilder { source: http::Error },
+
+    #[snafu(display("Certificate file watcher failed: {}", "source"))]
+    CertificateFileWatcherError { source: notify::Error },
+
 }
 
 #[derive(Clone)]
@@ -104,6 +112,8 @@ pub struct EventPublisher {
 /// This could be used by for example a Zigbee/Zwave addon that wants to show a graph of all connected devices.
 pub struct HttpService {
     http_root: PathBuf,
+    cert_key_pem_path: PathBuf,
+    cert_public_pem_path: PathBuf,
     bind_addr: (IpAddr, u16),
     redirects: RedirectEntriesChanger,
     default_ui_id: DefaultUiUri,
@@ -210,12 +220,14 @@ struct UpdateOptions {
 
 impl HttpService {
     /// Create a new instance of the warp based http service. Call `run` to start the service.
-    pub fn new(http_root: PathBuf) -> Self {
+    pub fn new(http_root: PathBuf, cert_key_der_path: PathBuf, cert_public_der_path: PathBuf) -> Self {
         let (restart_http, restart_http_rx) = mpsc::channel(1);
         let http_shutdown_marker = Arc::new(Mutex::new(ShutdownState { shutdown: false }));
 
         HttpService {
             http_root,
+            cert_key_pem_path: cert_key_der_path,
+            cert_public_pem_path: cert_public_der_path,
             bind_addr: ([0, 0, 0, 0].into(), 8080),
             redirects: Default::default(),
             default_ui_id: Arc::new(ArcSwapOption::new(None)),
@@ -251,7 +263,31 @@ impl HttpService {
     /// A restart for the later is required, because route configuration for the dynamic parts (proxies etc)
     /// are cloned non-mutable Arc's.
     pub async fn run(&mut self) -> Result<(), Error> {
-        let (restart_http_watch_tx, restart_http_watch_rx) = tokio::sync::watch::channel(false);
+        use notify::Watcher;
+
+        // Create a channel to receive the file watcher events.
+        let (cer_file_changed_tx, cer_file_changed_rx) = bounded(10);
+
+        // Automatically select the best implementation for your platform.
+        // You can also access each implementation directly e.g. INotifyWatcher.
+        let mut watcher = watcher(cer_file_changed_tx, Duration::from_secs(2)).context(CertificateFileWatcherError {})?;
+
+        // Add a path to be watched. All files and directories at that path and
+        // below will be monitored for changes.
+        watcher.watch(&self.cert_key_pem_path, RecursiveMode::NonRecursive).context(CertificateFileWatcherError {})?;
+
+        // The http notify restart task if the certificate file changed
+        let restart_tx = self.restart_http.clone();
+        tokio::spawn(async move {
+            loop {
+                let mut restart_tx = restart_tx.clone();
+                if let Err(_) = cer_file_changed_rx.recv() { break; }
+                if let Err(_) = restart_tx.send(()).await {
+                    error!("Failed to inform http service to restart after certificate changed");
+                    break;
+                }
+            }
+        });
 
         let http_shutdown_marker_clone = self.http_shutdown_marker.clone();
         let mut restart_http_rx = match self.restart_http_rx.take() {
@@ -259,178 +295,176 @@ impl HttpService {
             None => return Err(Error::HttpServerAlreadyRunning)
         };
 
-        // The http notify restart task. It notifies the current server instance about a restart request
-        tokio::spawn(async move {
-            loop {
-                if let None = restart_http_rx.recv().await { break; }
-                if http_shutdown_marker_clone.clone().lock().unwrap().shutdown { break; }
-                // A watch channel receiver will always yield the last value on creation, so first send a true, then a false
-                // to "reset".
-                restart_http_watch_tx.broadcast(true).unwrap();
-                restart_http_watch_tx.broadcast(false).unwrap();
-            }
-        });
-
-        let http_root_path = self.http_root.clone();
-        let http_shutdown_marker_clone = self.http_shutdown_marker.clone();
-        let bind_addr = self.bind_addr;
-        let redirect_entries = self.redirects.redirect_entries.clone();
-        let default_ui_id = self.default_ui_id.clone();
         loop {
-            let redirect_entries = redirect_entries.clone().load_full();
-            let redirect_entries = warp::any().map(move || redirect_entries.clone());
-            let http_root_path = http_root_path.clone();
-            let http_root_path_for_filter = http_root_path.clone();
-            let http_root_path_filter = warp::any().map(move || http_root_path_for_filter.clone());
-            let mut restart_http_watch_rx_clone = restart_http_watch_rx.clone();
+            let (restart_http_loop_tx, restart_http_loop_rx) = tokio::sync::oneshot::channel();
 
-            let route = index_route(&default_ui_id)
-                // Web uis html, config files, rules files, backups, interconnects, scripts
-                .or(warp::path("addons").and(warp::fs::dir(http_root_path.join("addons_http"))))
-                .or(warp::path("webui").and(warp::fs::dir(http_root_path.join("webui"))))
-                .or(warp::path("backups").and(warp::fs::dir(http_root_path.join("backups"))))
-                .or(warp::path("config").and(warp::fs::dir(http_root_path.join("config"))))
-                .or(warp::path("interconnects").and(warp::fs::dir(http_root_path.join("interconnects"))))
-                .or(warp::path("rules").and(warp::fs::dir(http_root_path.join("rules"))))
-                .or(warp::path("scripts").and(warp::fs::dir(http_root_path.join("scripts"))))
-                // Json arrays - directory indices
-                .or(warp::get().and(warp::path::full()).and(http_root_path_filter.clone()).and_then(directory_index_filter))
-
-                // /config/:module/:schema_id/:config_id
-                // Configurations
-
-                .or(warp::delete()
-                    .and(warp::path("config"))
-                    .and(warp::path::param::<String>())
-                    .and(warp::path::param::<String>())
-                    .and(warp::path::param::<String>())
-                    .and(http_root_path_filter.clone())
-                    .and_then(|module_id: String, schema_id: String, config_id: String, http_root: PathBuf| async move {
-                        let path = http_root.join(format!("config/{}/{}.{}.json", module_id, schema_id, config_id));
-                        if !path.exists() {
-                            return Err(warp::reject::not_found())
-                        }
-                        if let Err(e) = tokio::fs::remove_file(path).await {
-                            return Ok(warp::reply::with_status(warp::reply::html(CANNOT_REMOVE_HTML), warp::http::StatusCode::INTERNAL_SERVER_ERROR))
-                        }
-                        Ok(warp::reply::with_status(warp::reply::html(""), warp::http::StatusCode::OK))
-                    })
-                )
-                .or(warp::put()
-                    .and(warp::path("config"))
-                    .and(warp::path::param::<String>())
-                    .and(warp::path::param::<String>())
-                    .and(warp::path::param::<String>())
-                    .and(warp::query::query::<UpdateOptions>())
-                    .and(warp::body::content_length_limit(1024 * 16))
-                    .and(warp::body::concat())
-                    .and(http_root_path_filter.clone())
-                    .and_then(|module_id: String, schema_id: String, config_id: String, options: UpdateOptions, data: warp::body::FullBody, http_root: PathBuf| async move {
-                        //TODO
-                        Err::<String, Rejection>(warp::reject())
-                    })
-                )
-
-                // /interconnects/:interconnect_id
-                // Interconnection configurations are validated
-                .or(warp::put()
-                    .and(warp::path("interconnects"))
-                    .and(warp::path::param::<String>())
-                    .and(warp::query::query::<UpdateOptions>())
-                    .and(warp::body::content_length_limit(1024 * 8))
-                    .and(warp::body::json())
-                    .and_then(|interconnect_id: String, options: UpdateOptions, simple_map: BTreeMap<String, String>| async move {
-                        //TODO
-                        Err::<String, Rejection>(warp::reject())
-                    })
-                )
-                // /rules/:rule_id
-                // Rules are not validated. The rule engine will complain if a file is invalid.
-                .or(warp::put()
-                    .and(warp::path("rules"))
-                    .and(warp::path::param::<String>())
-                    .and(warp::query::query::<UpdateOptions>())
-                    .and(warp::body::content_length_limit(1024 * 8))
-                    .and(warp::body::json())
-                    .and_then(|rule_id: String, options: UpdateOptions, simple_map: BTreeMap<String, String>| async move {
-                        //TODO
-                        Err::<String, Rejection>(warp::reject())
-                    })
-                )
-                // /scripts/:script_id
-                // Scripts are not validated. The affected script engine will complain if a file is invalid.
-                .or(warp::put()
-                    .and(warp::path("scripts"))
-                    .and(warp::path::param::<String>())
-                    .and(warp::query::query::<UpdateOptions>())
-                    .and(warp::body::content_length_limit(1024 * 64))
-                    .and_then(|script_id: String, options: UpdateOptions| async move {
-                        //TODO
-                        Err::<String, Rejection>(warp::reject())
-                    })
-                )
-
-                .or(warp::delete()
-                    .and(warp::path::full())
-                    .and(http_root_path_filter.clone())
-                    .and_then(|path: warp::path::FullPath, http_root: PathBuf| async move {
-                        let path = path.as_str();
-                        let mut path_parts = path.split("/");
-                        let _ = path_parts.next().expect("Empty first path part");
-                        let path_front = path_parts.next().expect("Main path part");
-                        const ALLOWED:[&'static str;3] = ["interconnects", "rules", "scripts"];
-                        if !ALLOWED.contains(&path_front) {
-                            return Err( warp::reject())
-                        }
-                        let path = http_root.join(path);
-
-                        if !path.exists() {
-                            return Err(warp::reject::not_found())
-                        }
-                        if let Err(e) = tokio::fs::remove_file(path).await {
-                            return Ok(warp::reply::with_status(warp::reply::html(CANNOT_REMOVE_HTML), warp::http::StatusCode::INTERNAL_SERVER_ERROR))
-                        }
-                        Ok(warp::reply::with_status(warp::reply::html(""), warp::http::StatusCode::OK))
-                    })
-                )
-
-                // Redirects. First check for a match, ...
-                .or(warp::path::full().and(redirect_entries).and_then(|path: warp::path::FullPath, redirects: Arc<RedirectEntriesVec>| async move {
-                    let redirects = redirects.as_ref();
-                    let mut path_parts = path.as_str().split("/");
-                    let _ = path_parts.next().expect("Empty first path part");
-                    let path_front = path_parts.next().expect("Main path part");
-                    for redirect in redirects {
-                        if redirect.path == path_front {
-                            return Ok(redirect.clone());
-                        }
-                    }
-                    Err(warp::reject())
-                    // then capture and clone the request parts for a match
-                }).and(warp::method()).and(warp::path::full())
-                    .and(warp::header::headers_cloned())
-                    .and(warp::body::concat())
-                    .and_then(request_proxied_service)
-                );
-
+            let route = make_root(self.redirects.redirect_entries.clone().load_full(),
+                                  self.http_root.clone(), self.default_ui_id.clone());
             // Start tls warp with graceful shutdown
-            let (addr, server) = warp::serve(route)
-//        .tls(certificates::cert_filename(&cert_dir, certificates::FileFormat::PEM), certificates::key_filename(&cert_dir, certificates::FileFormat::PEM))
-                .bind_with_graceful_shutdown(bind_addr, async move {
-                    while let Some(value) = restart_http_watch_rx_clone.recv().await {
-                        if value { break; }
-                    }
+            let (addr, mut server) = warp::serve(route)
+                .tls().key_path(&self.cert_key_pem_path).cert_path(&self.cert_public_pem_path)
+                .bind_with_graceful_shutdown(self.bind_addr, async move {
+                    let _ = restart_http_loop_rx.await;
                 });
 
             info!("HTTP server running on {}", addr);
-            server.await;
+            // When the restart_http_loop_tx channel requested a restart, we use the temporary oneshot channel
+            // to inform the graceful_shutdown part of warp. Because of Rusts borrowing rules, we cannot use
+            // let fut = restart_http_rx.recv(); and await `fut` directly in the graceful shutdown context.
+            let server = unsafe { Pin::new_unchecked(&mut server) };
+            let mut restart_http_rx = restart_http_rx.recv();
+            let restart_http_rx = unsafe { Pin::new_unchecked(&mut restart_http_rx) };
+            if let Either::Right((_, server)) = futures_util::future::select(server, restart_http_rx).await {
+                let _ = restart_http_loop_tx.send(());
+                server.await;
+            }
             info!("HTTP server stopped");
+
             // Check if this is an actual shutdown, not just a restart request
-            if http_shutdown_marker_clone.clone().lock().unwrap().shutdown { break; }
+            if self.http_shutdown_marker.clone().lock().unwrap().shutdown { break; }
         }
 
         Ok(())
     }
+}
+
+/// Create the route for warp. The result is a boxed filer to reduce the compile time.
+///
+/// It also works with `impl Filter<Extract=(impl warp::Reply, ), Error=Rejection> + Clone`
+/// but the resulting type is so complex that `#![type_length_limit="2313898"]` is required and compile time went up by 1 minute.
+fn make_root(redirect_entries: Arc<RedirectEntriesVec>, http_root_path: PathBuf, default_ui_id: DefaultUiUri) -> warp::filters::BoxedFilter<(impl warp::Reply,)> {
+    let redirect_entries = warp::any().map(move || redirect_entries.clone());
+    let http_root_path_for_filter = http_root_path.clone();
+    let http_root_path_filter = warp::any().map(move || http_root_path_for_filter.clone());
+
+    index_route(&default_ui_id)
+        // Web uis html, config files, rules files, backups, interconnects, scripts
+        .or(warp::path("addons").and(warp::fs::dir(http_root_path.join("addons_http"))))
+        .or(warp::path("webui").and(warp::fs::dir(http_root_path.join("webui"))))
+        .or(warp::path("backups").and(warp::fs::dir(http_root_path.join("backups"))))
+        .or(warp::path("config").and(warp::fs::dir(http_root_path.join("config"))))
+        .or(warp::path("interconnects").and(warp::fs::dir(http_root_path.join("interconnects"))))
+        .or(warp::path("rules").and(warp::fs::dir(http_root_path.join("rules"))))
+        .or(warp::path("scripts").and(warp::fs::dir(http_root_path.join("scripts"))))
+        // Json arrays - directory indices
+        .or(warp::get().and(warp::path::full()).and(http_root_path_filter.clone()).and_then(directory_index_filter))
+
+        // /config/:module/:schema_id/:config_id
+        // Configurations
+
+        .or(warp::delete()
+            .and(warp::path("config"))
+            .and(warp::path::param::<String>())
+            .and(warp::path::param::<String>())
+            .and(warp::path::param::<String>())
+            .and(http_root_path_filter.clone())
+            .and_then(|module_id: String, schema_id: String, config_id: String, http_root: PathBuf| async move {
+                let path = http_root.join(format!("config/{}/{}.{}.json", module_id, schema_id, config_id));
+                if !path.exists() {
+                    return Err(warp::reject::not_found());
+                }
+                if let Err(e) = tokio::fs::remove_file(path).await {
+                    return Ok(warp::reply::with_status(warp::reply::html(CANNOT_REMOVE_HTML), warp::http::StatusCode::INTERNAL_SERVER_ERROR));
+                }
+                Ok(warp::reply::with_status(warp::reply::html(""), warp::http::StatusCode::OK))
+            })
+        )
+        .or(warp::put()
+            .and(warp::path("config"))
+            .and(warp::path::param::<String>())
+            .and(warp::path::param::<String>())
+            .and(warp::path::param::<String>())
+            .and(warp::query::query::<UpdateOptions>())
+            .and(warp::body::content_length_limit(1024 * 16))
+            .and(warp::body::concat())
+            .and(http_root_path_filter.clone())
+            .and_then(|module_id: String, schema_id: String, config_id: String, options: UpdateOptions, data: warp::body::FullBody, http_root: PathBuf| async move {
+                //TODO
+                Err::<String, Rejection>(warp::reject())
+            })
+        )
+
+        // /interconnects/:interconnect_id
+        // Interconnection configurations are validated
+        .or(warp::put()
+            .and(warp::path("interconnects"))
+            .and(warp::path::param::<String>())
+            .and(warp::query::query::<UpdateOptions>())
+            .and(warp::body::content_length_limit(1024 * 8))
+            .and(warp::body::json())
+            .and_then(|interconnect_id: String, options: UpdateOptions, simple_map: BTreeMap<String, String>| async move {
+                //TODO
+                Err::<String, Rejection>(warp::reject())
+            })
+        )
+        // /rules/:rule_id
+        // Rules are not validated. The rule engine will complain if a file is invalid.
+        .or(warp::put()
+            .and(warp::path("rules"))
+            .and(warp::path::param::<String>())
+            .and(warp::query::query::<UpdateOptions>())
+            .and(warp::body::content_length_limit(1024 * 8))
+            .and(warp::body::json())
+            .and_then(|rule_id: String, options: UpdateOptions, simple_map: BTreeMap<String, String>| async move {
+                //TODO
+                Err::<String, Rejection>(warp::reject())
+            })
+        )
+        // /scripts/:script_id
+        // Scripts are not validated. The affected script engine will complain if a file is invalid.
+        .or(warp::put()
+            .and(warp::path("scripts"))
+            .and(warp::path::param::<String>())
+            .and(warp::query::query::<UpdateOptions>())
+            .and(warp::body::content_length_limit(1024 * 64))
+            .and_then(|script_id: String, options: UpdateOptions| async move {
+                //TODO
+                Err::<String, Rejection>(warp::reject())
+            })
+        )
+
+        .or(warp::delete()
+            .and(warp::path::full())
+            .and(http_root_path_filter.clone())
+            .and_then(|path: warp::path::FullPath, http_root: PathBuf| async move {
+                let path = path.as_str();
+                let mut path_parts = path.split("/");
+                let _ = path_parts.next().expect("Empty first path part");
+                let path_front = path_parts.next().expect("Main path part");
+                const ALLOWED: [&'static str; 3] = ["interconnects", "rules", "scripts"];
+                if !ALLOWED.contains(&path_front) {
+                    return Err(warp::reject());
+                }
+                let path = http_root.join(path);
+
+                if !path.exists() {
+                    return Err(warp::reject::not_found());
+                }
+                if let Err(e) = tokio::fs::remove_file(path).await {
+                    return Ok(warp::reply::with_status(warp::reply::html(CANNOT_REMOVE_HTML), warp::http::StatusCode::INTERNAL_SERVER_ERROR));
+                }
+                Ok(warp::reply::with_status(warp::reply::html(""), warp::http::StatusCode::OK))
+            })
+        )
+
+        // Redirects. First check for a match, ...
+        .or(warp::path::full().and(redirect_entries).and_then(|path: warp::path::FullPath, redirects: Arc<RedirectEntriesVec>| async move {
+            let redirects = redirects.as_ref();
+            let mut path_parts = path.as_str().split("/");
+            let _ = path_parts.next().expect("Empty first path part");
+            let path_front = path_parts.next().expect("Main path part");
+            for redirect in redirects {
+                if redirect.path == path_front {
+                    return Ok(redirect.clone());
+                }
+            }
+            Err(warp::reject())
+            // then capture and clone the request parts for a match
+        }).and(warp::method()).and(warp::path::full())
+            .and(warp::header::headers_cloned())
+            .and(warp::body::concat())
+            .and_then(request_proxied_service)
+        ).boxed()
 }
 
 const CANNOT_REMOVE_HTML: &'static str = r#"<html>
@@ -469,7 +503,7 @@ struct DirEntryForFilter {
 /// ```
 async fn directory_index_filter(path: warp::path::FullPath, http_root: PathBuf) -> Result<impl Reply, Rejection> {
     let path = http_root.join(&path.as_str()[1..]);
-    if let Ok(mut entries) = tokio::fs::read_dir(path).await {
+    if let Ok(entries) = tokio::fs::read_dir(path).await {
         let mut entries: tokio::fs::ReadDir = entries;
         let mut resp = Vec::<DirEntryForFilter>::new();
         while let Ok(Some(entry)) = entries.next_entry().await {

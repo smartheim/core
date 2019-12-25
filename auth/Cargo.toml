@@ -14,6 +14,8 @@ is-it-maintained-issue-resolution = { repository = "openhab-nodes/core" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+libohxcore = {path="../libohxcore"}
+
 # General
 serde = { version = "1.0.101", features = ["derive"] }
 serde_json = "1.0.41"
@@ -22,10 +24,13 @@ log = "0.4.8"
 env_logger = {version="0.7.1",default-features=false,features=["termcolor","humantime"]}
 nix = "0.15.0"
 structopt = "0.3.2"
+arc-swap = "0.4.4"
+snafu = "0.6.0"
+semver = "0.9.0"
+chrono = {version="0.4.9",features=["serde"]}
 
-# JsonSchema validation and generation
-valico = "3.1"
-schemars = "0.6"
+# Web service
+warp = {version="0.2.0-alpha.0", git="https://github.com/seanmonstar/warp",features=["tls"]}
 
 # Async
 futures-core =  { version = "^0.3.0"}

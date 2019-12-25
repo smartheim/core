@@ -10,7 +10,7 @@ use std::path::Path;
 use structopt::StructOpt;
 use log::{info, error};
 
-use libohxcore::{wait_until_known_time, wait_for_root_directory, common_config};
+use libohxcore::{wait_until_known_time, wait_for_root_directory, common_config, shutdown_on_ctrl_c};
 use std::time::Duration;
 
 #[tokio::main]
@@ -24,23 +24,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Command line / environment / file configuration
     let config: rule_config::Config = rule_config::Config::from_args();
-    let common_config: common_config::Config = common_config::Config::from_args();
-
-    let path = common_config.get_root_directory();
-    wait_for_root_directory(&path, false)?;
-    wait_until_known_time(false)?;
-
     let (mut shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
 
-    // Ctrl+C task
-    let mut shutdown_tx_clone = shutdown_tx.clone();
-    tokio::spawn(async move {
-        loop {
-            let _ = tokio::signal::ctrl_c().await;
-            info!("Ctrl+C: Shutting down");
-            shutdown_tx_clone.send(()).await.unwrap();
-        }
-    });
+    let path = config.common.get_root_directory();
+    shutdown_on_ctrl_c(shutdown_tx.clone());
+    wait_for_root_directory(&path, false).await?;
+    wait_until_known_time(false).await?;
 
     let _ = tokio::time::delay_for(Duration::from_secs(3)).await;
     info!("Timeout: Shutting down");

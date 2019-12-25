@@ -6,5 +6,5 @@ pub struct Command {
     addon_id: String,
     thing_uid: String,
     command_name: String,
-    command_values: Option<serde_json::Value>
+    command_value: Option<serde_json::Value>
 }

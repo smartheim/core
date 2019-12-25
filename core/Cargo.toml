@@ -36,9 +36,23 @@ snafu = "0.6.0"
 semver = "0.9.0"
 chrono = {version="0.4.9",features=["serde"]}
 
+# Certificates
+rcgen = {version="0.7.0",features=["x509-parser"]}
+x509-parser = "0.6.0"
+yasna = { version = "0.3", features = ["bit-vec"] }
+rand = "0.7.2"
+
+# Async
 futures-core =  { version = "^0.3.0"}
 futures-util =  { version = "^0.3.0"}
 futures-channel =  { version = "^0.3.0"}
-tokio = { version = "^0.2.0", features = ["sync","net","signal","time","rt-util","rt-core","macros"] }
+tokio = { version = "^0.2.0", features = ["sync","net","signal","time","io-util","rt-util","rt-core","macros"] }
 pin-project = "0.4.6"
 async-trait = "0.1.21"
+generational-arena = "0.2.6"
+base64 = "0.11.0"
+ring = "0.16.9"
+bcder = "0.4.1"
+
+[dev-dependencies]
+tempfile = "3.1.0"
