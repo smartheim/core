@@ -39,6 +39,9 @@ pub enum Error {
     #[snafu(display("Biscuit error: {}", source))]
     BiscuitError { source: biscuit::errors::Error },
 
+    #[snafu(display("Base64 error: {}", source))]
+    Base64DecodeError { source: base64::DecodeError },
+
     #[snafu(display("Failed to create system auth certificate parameters: {}", source))]
     CertificateParamsFailed { source: crate::create_http_certificate::Error },
 
@@ -126,12 +129,18 @@ fn check_jwks(jwks_file: &Path, key_der: &Path) -> Result<(), Error> {
     return Ok(());
 }
 
+pub const LIMB_BITS: usize = 64;
+pub const LIMB_BYTES: usize = (LIMB_BITS + 7) / 8;
+
 fn create_jwks(jwks_file: &Path, key_der: &Path, now: DateTime<Utc>, domains: Vec<SanType>) -> Result<(), Error> {
     let rng = ring::rand::SystemRandom::new();
     let pkcs8_bytes = ring::signature::EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng).ok().context(UseGeneratedCert {})?;
     let key_pair = signature::EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8_bytes.as_ref()).ok().context(UseGeneratedCert {})?;
+    let public = key_pair.public_key().as_ref();
 
-    x509_parser::parse_subject_public_key_info();
+    if public[0] != 4 {
+        return Err(Error::UseGeneratedCert{});
+    }
 
     let mut key_pair_der = BufWriter::new(File::create(&key_der).context(GenericIOError {})?);
     key_pair_der.write(pkcs8_bytes.as_ref()).context(GenericIOError {})?;
@@ -151,15 +160,8 @@ fn create_jwks(jwks_file: &Path, key_der: &Path, now: DateTime<Utc>, domains: Ve
                 algorithm: AlgorithmParameters::EllipticCurve(EllipticCurveKeyParameters {
                     key_type: Default::default(),
                     curve: EllipticCurve::P256,
-                    x: vec![
-                        48, 160, 66, 76, 210, 28, 41, 68, 131, 138, 45, 117, 201, 43, 55, 231,
-                        110, 162, 13, 159, 0, 137, 58, 59, 78, 238, 138, 60, 10, 175, 236, 62,
-                    ],
-                    y: vec![
-                        224, 75, 101, 233, 36, 86, 217, 136, 139, 82, 179, 121, 189, 251, 213,
-                        30, 232, 105, 239, 31, 15, 198, 91, 102, 89, 105, 91, 108, 206, 8, 23,
-                        35,
-                    ],
+                    x: public[1..33].to_vec(),
+                    y: public[33..].to_vec(),
                     d: None,
                 }),
                 additional: Default::default(),

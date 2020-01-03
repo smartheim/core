@@ -306,9 +306,9 @@ fn make_root(redirect_entries: Arc<RedirectEntriesVec>, http_root_path: PathBuf,
             .and(warp::path::param::<String>())
             .and(warp::query::query::<UpdateOptions>())
             .and(warp::body::content_length_limit(1024 * 16))
-            .and(warp::body::concat())
+            .and(warp::body::bytes())
             .and(http_root_path_filter.clone())
-            .and_then(|module_id: String, schema_id: String, config_id: String, options: UpdateOptions, data: warp::body::FullBody, http_root: PathBuf| async move {
+            .and_then(|module_id: String, schema_id: String, config_id: String, options: UpdateOptions, data: bytes::Bytes, http_root: PathBuf| async move {
                 //TODO
                 Err::<String, Rejection>(warp::reject())
             })

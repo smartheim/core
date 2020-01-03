@@ -13,3 +13,4 @@ Cargo.lock
 
 /ohx_root_dir/certs/*.pem
 /ohx_root_dir/certs/*.der
+/ohx_root_dir/certs/*.jwks

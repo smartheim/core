@@ -376,9 +376,9 @@ fn make_root(redirect_entries: Arc<RedirectEntriesVec>, http_root_path: PathBuf,
             .and(warp::path::param::<String>())
             .and(warp::query::query::<UpdateOptions>())
             .and(warp::body::content_length_limit(1024 * 16))
-            .and(warp::body::concat())
+            .and(warp::body::bytes())
             .and(http_root_path_filter.clone())
-            .and_then(|module_id: String, schema_id: String, config_id: String, options: UpdateOptions, data: warp::body::FullBody, http_root: PathBuf| async move {
+            .and_then(|module_id: String, schema_id: String, config_id: String, options: UpdateOptions, data: bytes::Bytes, http_root: PathBuf| async move {
                 //TODO
                 Err::<String, Rejection>(warp::reject())
             })
@@ -462,7 +462,7 @@ fn make_root(redirect_entries: Arc<RedirectEntriesVec>, http_root_path: PathBuf,
             // then capture and clone the request parts for a match
         }).and(warp::method()).and(warp::path::full())
             .and(warp::header::headers_cloned())
-            .and(warp::body::concat())
+            .and(warp::body::bytes())
             .and_then(request_proxied_service)
         ).boxed()
 }
@@ -522,7 +522,7 @@ async fn directory_index_filter(path: warp::path::FullPath, http_root: PathBuf) 
     Err(warp::reject())
 }
 
-async fn request_proxied_service(redirect: RedirectEntry, method: warp::http::Method, path: warp::path::FullPath, headers: HeaderMap, body: warp::body::FullBody) -> Result<impl Reply, Rejection> {
+async fn request_proxied_service(redirect: RedirectEntry, method: warp::http::Method, path: warp::path::FullPath, headers: HeaderMap, body: bytes::Bytes) -> Result<impl Reply, Rejection> {
     let path_tail = path.as_str();
 //    let mut path = String::with_capacity(path_tail.len() + 1);
 //    path += "/";

@@ -31,6 +31,7 @@ chrono = {version="0.4.9",features=["serde"]}
 
 # Web service
 warp = {version="0.2.0-alpha.0", git="https://github.com/seanmonstar/warp",features=["tls"]}
+bytes = "0.5.3"
 
 # Async
 futures-core =  { version = "^0.3.0"}

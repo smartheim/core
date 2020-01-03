@@ -46,6 +46,7 @@ async-trait = "0.1.21"
 warp = {version="0.2.0-alpha.0", git="https://github.com/seanmonstar/warp",features=["tls"]}
 crossbeam-channel = "0.3.8"
 notify = "=5.0.0-pre.1"
+bytes = "0.5.3"
 
 # JsonSchema validation and generation
 valico = "3.1"
