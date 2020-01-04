@@ -1,14 +1,9 @@
-# Certificates, private, public keys
+# Certificates and public keys
 
-You may provide the following files yourself if you do not want them
-to be auto-generated:
+This directory contains the https/http2 certificate and JSon WebToken (JWT) 
+signing public key in form of a JWKS (JSon WebToken Key Set) file (`ohx_system.jwks`).
 
-* `https_key.pem`: PEM formatted X509 private key for https, grpc, MQTT
-* `https_key.der`: DER formatted X509 private key
-* `https_cert.pem`: PEM formatted X509 certificate for https, grpc, MQTT
-* `https_cert.der`: DER formatted X509 certificate
+The JWKS will be served by ohx-serve as `/.well-known/jwks.json`.
 
-* `ohx_pub_sys.der`: DER formatted public key of the "sys" ohx user.
-* `ohx_pub_sys.pem`: PEM formatted public key of the "sys" ohx user.
-* `ohx_priv_sys.der`: DER formatted private key of the "sys" ohx user.
-* `ohx_priv_sys.pem`: PEM formatted private key of the "sys" ohx user.
+This directory should NEVER contain any private keys.
+Those MUST be stored in the individual `config/` directories and owned by the respective service only.

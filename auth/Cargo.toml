@@ -16,7 +16,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 libohxcore = {path="../libohxcore"}
 
-# General
+# General: Errors, logging, cmdline, datetime
 serde = { version = "1.0.101", features = ["derive"] }
 serde_json = "1.0.41"
 serde_derive = "1.0.101"
@@ -24,10 +24,11 @@ log = "0.4.8"
 env_logger = {version="0.7.1",default-features=false,features=["termcolor","humantime"]}
 nix = "0.15.0"
 structopt = "0.3.2"
-arc-swap = "0.4.4"
 snafu = "0.6.0"
 semver = "0.9.0"
 chrono = {version="0.4.9",features=["serde"]}
+
+arc-swap = "0.4.4"
 
 # Web service
 warp = {version="0.2.0-alpha.0", git="https://github.com/seanmonstar/warp",features=["tls"]}
@@ -39,3 +40,9 @@ futures-util =  { version = "^0.3.0"}
 futures-channel =  { version = "^0.3.0"}
 tokio = { version = "^0.2.0", features = ["sync","net","signal","time"] }
 pin-project = "0.4.6"
+
+# JWT
+base64 = "0.11.0"
+ring = "0.16.9"
+#bcder = "0.4.1"
+untrusted = "0.7.0"

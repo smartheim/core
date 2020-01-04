@@ -37,8 +37,8 @@ pub enum Error {
 /// If there are no certificates or they are about to expire (14 days left),
 /// a new self signed certificate is generated and saved to the given path.
 /// The function returns (true, duration_until_expire).
-pub fn check_gen_certificates(cert_dir: &Path) -> Result<(bool, Duration), Error> {
-    if let Ok(duration) = check_existing(&cert_dir) {
+pub fn check_generate(cert_dir: &Path,private_key_dir: &Path) -> Result<(bool, Duration), Error> {
+    if let Ok(duration) = check_existing(&private_key_dir) {
         return Ok((false, duration));
     }
 
@@ -58,7 +58,7 @@ pub fn check_gen_certificates(cert_dir: &Path) -> Result<(bool, Duration), Error
 
     std::fs::create_dir_all(&cert_dir).context(IOError { path: cert_dir })?;
     let now = chrono::Utc::now();
-    let cert = create_cert(&cert_dir, now, domains)?;
+    let cert = create_cert(&cert_dir,&private_key_dir, now, domains)?;
     use x509_parser::parse_x509_der;
     let cert = cert.serialize_der().context(RCGen {})?;
     let x509 = parse_x509_der(cert.as_slice())
@@ -71,19 +71,20 @@ pub fn check_gen_certificates(cert_dir: &Path) -> Result<(bool, Duration), Error
 pub struct RefreshSelfSigned {
     shutdown_rx: tokio::sync::mpsc::Receiver<()>,
     cert_dir: PathBuf,
+    private_key_dir:PathBuf
 }
 
 impl RefreshSelfSigned {
-    pub fn new(cert_dir: PathBuf) -> (Self, tokio::sync::mpsc::Sender<()>) {
+    pub fn new(cert_dir: PathBuf,private_key_dir: PathBuf) -> (Self, tokio::sync::mpsc::Sender<()>) {
         let (cert_watch_shutdown_tx, shutdown_rx) = tokio::sync::mpsc::channel(1);
-        (RefreshSelfSigned { shutdown_rx, cert_dir }, cert_watch_shutdown_tx)
+        (RefreshSelfSigned { shutdown_rx, cert_dir,private_key_dir }, cert_watch_shutdown_tx)
     }
 
     pub async fn run(self) {
-        let RefreshSelfSigned { mut shutdown_rx, cert_dir } = self;
+        let RefreshSelfSigned { mut shutdown_rx, cert_dir,private_key_dir } = self;
 
         loop {
-            match check_gen_certificates(&cert_dir) {
+            match check_generate(&cert_dir,&private_key_dir) {
                 Err(_) => {
                     error!("Failed to re-generate certificates");
                     break;
@@ -103,15 +104,16 @@ impl RefreshSelfSigned {
     }
 }
 
-fn create_cert(cert_dir: &Path, now: DateTime<Utc>, domains: Vec<SanType>) -> Result<Certificate, Error> {
+fn create_cert(cert_dir: &Path, private_key_dir: &Path,now: DateTime<Utc>, domains: Vec<SanType>) -> Result<Certificate, Error> {
     let cert = Certificate::from_params(create_cert_params(now, domains, true)?).context(RCGen {})?;
     let path = cert_filename(cert_dir, FileFormat::PEM);
     fs::write(&path, &cert.serialize_pem().context(RCGen {})?.as_bytes()).context(IOError { path })?;
     let path = cert_filename(cert_dir, FileFormat::DER);
     fs::write(&path, &cert.serialize_der().context(RCGen {})?).context(IOError { path })?;
-    let path = key_filename(cert_dir, FileFormat::PEM);
+
+    let path = key_filename(private_key_dir, FileFormat::PEM);
     fs::write(&path, &cert.serialize_private_key_pem().as_bytes()).context(IOError { path })?;
-    let path = key_filename(cert_dir, FileFormat::DER);
+    let path = key_filename(private_key_dir, FileFormat::DER);
     fs::write(&path, &cert.serialize_private_key_der()).context(IOError { path })?;
     Ok(cert)
 }
@@ -179,18 +181,18 @@ fn not_ca() -> CustomExtension {
 }
 
 /// Return true if a valid certificate has been found
-pub fn check_existing(cert_dir: &Path) -> Result<Duration, Error> {
+pub fn check_existing(private_key_dir:&Path) -> Result<Duration, Error> {
     use x509_parser::parse_x509_der;
 
-    let cert_file = key_filename(cert_dir, FileFormat::DER);
-    if !cert_file.exists() { return Err(Error::CertificateExpired); }
+    let cert_key_file = key_filename(private_key_dir, FileFormat::DER);
+    if !cert_key_file.exists() { return Err(Error::CertificateExpired); }
 
-    let validity = File::open(&cert_file).and_then(|file| {
+    let validity = File::open(&cert_key_file).and_then(|file| {
         let mut buffer = Vec::new();
         BufReader::new(file).read_to_end(&mut buffer)?;
         let p = parse_x509_der(&buffer).map_err(|_| std::io::Error::new(ErrorKind::Other, "Failed to parse x509_der cert"))?;
         Ok(p.1.tbs_certificate.validity)
-    }).context(IOError { path: cert_file.to_path_buf() })?;
+    }).context(IOError { path: cert_key_file.to_path_buf() })?;
 
     if let Some(duration) = validity.time_to_expiration() {
         // Return true if the certificate is still valid for at least 2 weeks
@@ -219,7 +221,7 @@ mod tests {
 
         assert!(super::check_existing(path).is_err());
         let now = chrono::Utc::now();
-        super::create_cert(path, now, domains).expect("create_cert");
+        super::create_cert(path,path, now, domains).expect("create_cert");
         assert!(super::check_existing(path).is_ok());
     }
 
@@ -235,7 +237,7 @@ mod tests {
 
         let now = chrono::Utc::now();
         let now = now.with_year(now.year() - 1).unwrap();
-        super::create_cert(path, now, domains).expect("create_cert");
+        super::create_cert(path,path, now, domains).expect("create_cert");
         assert!(super::check_existing(path).is_err());
     }
 }

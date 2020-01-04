@@ -11,6 +11,7 @@ use snafu::Error;
 
 use libohxcore::{common_config, wait_until_known_time, wait_for_root_directory, shutdown_on_ctrl_c, key_filename, cert_filename, FileFormat};
 use http::service::HttpService;
+mod create_system_auth_key;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,8 +26,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config: auth_config::Config = auth_config::Config::from_args();
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
 
-    wait_for_root_directory(&config.common.get_root_directory(), false).await?;
+    create_root_directory(&config.common)?;
     wait_until_known_time(false).await?;
+
+    create_system_auth_key::check_generate(&config.common.get_certs_directory())?;
+
     shutdown_on_ctrl_c(shutdown_tx.clone());
 
     let mut http_service = HttpService::new(config.common.get_root_directory(),
@@ -44,5 +48,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let _ = shutdown.await;
+    Ok(())
+}
+
+/// Creates all OHX root directory subdirectories required to run the OHX core service
+fn create_root_directory(common_config: &common_config::Config) -> Result<(), std::io::Error> {
+    let path = common_config.get_root_directory();
+    if !common_config.create_root && !path.exists() {
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "OHX Root directory does not exist. Consider using --create-root").into());
+    }
+
+    std::fs::create_dir_all(path.join("certs"))?;
+    std::fs::create_dir_all(path.join("config"))?;
     Ok(())
 }

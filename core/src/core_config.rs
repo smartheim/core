@@ -40,10 +40,6 @@ impl FromStr for LowDiskSpacePolicy {
 
 #[derive(StructOpt, Debug, Clone)]
 pub struct Config {
-    /// OHX will terminate if the root_directory does not exist yet.
-    /// Set this option to create the root directory and sub-directories instead.
-    pub create_root: bool,
-
     /// The interconnects storage directory. The default is ohx_root_directory/interconnects.
     /// The directory will be watched for changed files.
     #[structopt(parse(from_os_str), long, env = "OHX_INTERCONNECTS_DIRECTORY")]
@@ -86,7 +82,6 @@ pub struct Config {
 impl Config {
     pub fn new() -> Config {
         Config {
-            create_root: false,
             interconnects_directory: None,
             core_config_directory: None,
             low_memory_policy:LowMemoryPolicy::GraduallyRestartAddons,

@@ -63,8 +63,7 @@ const KEY_FILENAME_DER: &'static str = "https_key.der";
 const PUBLIC_FILENAME: &'static str = "https_cert.pem";
 const PUBLIC_FILENAME_DER: &'static str = "https_cert.der";
 
-const SYSTEM_USER_KEY_DER: &'static str = "ohx_system.der";
-const SYSTEM_USER_JKWS: &'static str = "ohx_system.jwks";
+const SYSTEM_AUTH_JKWS: &'static str = "ohx_system.jwks";
 
 pub enum FileFormat {
     DER,
@@ -85,10 +84,6 @@ pub fn cert_filename(cert_dir: &Path, format: FileFormat) -> PathBuf {
     }
 }
 
-pub fn system_user_jwks(cert_dir: &Path) -> PathBuf {
-    cert_dir.join(SYSTEM_USER_JKWS)
-}
-
-pub fn system_user_key_der(cert_dir: &Path) -> PathBuf {
-    cert_dir.join(SYSTEM_USER_KEY_DER)
+pub fn system_auth_jwks(cert_dir: &Path) -> PathBuf {
+    cert_dir.join(SYSTEM_AUTH_JKWS)
 }
