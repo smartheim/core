@@ -2,6 +2,8 @@
 
 mod http;
 mod auth_config;
+mod user_store;
+mod refresh_tokens;
 
 use env_logger::{Env, TimestampPrecision, DEFAULT_FILTER_ENV};
 use std::path::Path;

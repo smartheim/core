@@ -3,14 +3,15 @@
 [![Build Status](https://github.com/openhab-nodes/core/workflows/test/badge.svg)](https://github.com/openhab-nodes/core/actions)
 [![](https://img.shields.io/badge/license-MIT-blue.svg)](http://opensource.org/licenses/MIT)
 
-> OHX is a modern Smart Home solution, embracing technologies like software containers for language agnostic extensibility. Written in Rust with an extensive test suite, OHX is fast, efficient, secure and fun to work on.
+> OHX is a modern Smart Home solution, embracing technologies like software containers for language agnostic extensibility.
+> Written in Rust with an extensive test suite, OHX is fast, efficient, secure and fun to work on.
 
 OHX Core consists of multiple services that work in tandem to form a vendor crossing **device interconnect hub** 
 (ie connect a ZWave wall switch with a Zigbee light bulb) and Smart Home solution.
 Find the individual projects in their respective subdirectories.
 You usually want to use additional OHX Addons for specific device support.
 
-For a ready to use operating system image for single board computers and regular PCs (and virtual machines),
+For a ready to use operating system image for single board computers, regular PCs and virtual machines,
 you might also be interested in [OHX OS](https://github.com/openhab-nodes/ohx-os/).
 
 > OHX Core Services are safe to be exposed to the Internet and implement encryption, authentication various anti-abuse techniques
@@ -74,8 +75,9 @@ A quick run down on individual service responsibilities follows.
   to install, start and manage OHX Addons and access Addon logs.
 - Core provides the interconnection service.
   This service reacts on Addon Thing property changes and sends corresponding *Commands* to Addons.
-- IOServices are provided with changed Addon Thing property, if the configured filters pass and
-  received *Commands* are routed to Addons if, again, the configured filters pass.
+- Thing states are exposed via IOService Addons (for example Cloud Connector for Alexa support).
+  Core provides IOServices with changed Addon Thing properties, if configured filters pass.
+  Received *Commands* are routed back to core and to respective Addons if, again, the configured filters pass.
 - ohx-core acts as a notification service. Addons can extend the service by providing additional notification channels.
 - Backup strategies are executed by core. 
 
@@ -83,7 +85,7 @@ A quick run down on individual service responsibilities follows.
 - It generates a self-signed https certificate if none is found at start up and redirects http requests to https.
 - It provides a REST-like access (GET/POST/PUT/DELETE) to ioservice and interconnection configurations, rules, scripts, and general configuration. 
 - Without `ohx-serve` there will be no http(s) server, so no *Setup & Maintenance* Web UI and no way to
- manipulate configurations, rules, scripts via a web API. You can still just alter the file files for configuration.
+ manipulate configurations, rules, scripts via a web API. You can still just alter the files for configuration.
 
 `ohx-ruleengine` is an [Event, Condition, Action](https://en.wikipedia.org/wiki/Event_condition_action) rule engine.
 - Addons can register additional "Events", "Conditions", "Actions" and "Transformations" types.
@@ -96,8 +98,10 @@ If you only require the interconnect functionality, just do not start up `ohx-ru
 - It also manages extern OAuth Tokens and token refreshing, like the https://openhabx.com cloud link for
 Amazon Alexa and Google Home support.
 - Without `ohx-auth` you will not be able to login via the command line utility or the *Setup & Maintenance* Web UI.
- Some Addons require periodic token refreshing. Those Addons will not work.
- 
+- Initial access token generation for inter-service communication is done by ohx-auth.
+- Periodic access token refreshment will not work without ohx-auth.
+  As soon as core service and addon tokens have expired, ohx will come to a halt.
+  
 ## Compile and Contribute
 
 OHX is written in [Rust](https://rustup.rs/).
@@ -116,11 +120,13 @@ Each service in this repository is versioned on its own.
 ## Security
 
 Despite everyone’s best efforts, security incidents are inevitable in an increasingly connected world.
-OHX is written in Rust to avoid common memory access and memory management pitfalls, even for new contributors.
+OHX is written in Rust to avoid common memory access and memory management pitfalls and user input parsing bugs, even for new contributors.
 
 Industry standards like OAuth and https are used on the external interface level.
 Encryption and https certificate management is based on Rustls and Ring (based on boringssl), two very well maintained Rust crates.
 No openSSL or C legacy involved.
+
+Limited input buffers and bounded backpressure queues prevent abuse and denial of service attacks. 
 
 **On Linux only**: Modern operating system kernel features restrict internet provided executables ("Scripts", "Addons")
 via [network user namespaces](https://en.wikipedia.org/wiki/Linux_namespaces#Network_(net)), [cgroups](https://en.wikipedia.org/wiki/Cgroups) and [seccomp](https://en.wikipedia.org/wiki/Seccomp).
@@ -137,7 +143,7 @@ Report any findings to security@openhabx.com.
 
 ## Maintainer: Core Deployment
 
-Update the CHANGELOG file before releasing! Use shell scripts for deployment that are found in `scripts/`:
+Update the CHANGELOG file before releasing! Use scripts for deployment that are found in `scripts/`:
 
 * build.sh: Cross compile for x86_64, armv7l, aarch64 as static musl binaries
 * deploy.sh: Deploy to Github Releases as zipped distribution

@@ -36,6 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
 /// Creates all OHX root directory subdirectories required to run the OHX core service
 fn create_root_directory(common_config: &common_config::Config) -> Result<(), std::io::Error> {
     let path = common_config.get_root_directory();

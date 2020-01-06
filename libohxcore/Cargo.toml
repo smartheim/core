@@ -29,6 +29,8 @@ structopt = "0.3.2"
 chrono = {version="0.4.9",features=["serde"]}
 semver = {version="0.9", features=["serde"]}
 snafu = "0.6.0"
+strum_macros = "0.17.1"
+strum = "0.17.1"
 
 # Discovery
 socket2 = {version="0.3", features=["reuseport"]}
