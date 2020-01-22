@@ -30,12 +30,13 @@ use std::path::{PathBuf, Path};
 use std::io::{BufWriter, BufReader, Read};
 use std::fs::File;
 use serde_json::json;
-use log::info;
+use log::{info, error};
 use std::io::Write;
+use tokio::time::timeout;
 
 pub use snafu::{ResultExt, Snafu};
 use ring::signature::{KeyPair, EcdsaSigningAlgorithm, ECDSA_P256_SHA256_FIXED_SIGNING, ECDSA_P256_SHA256_FIXED};
-use libohxcore::{system_auth_jwks, biscuit};
+use libohxcore::{system_auth_jwks};
 use chrono::{DateTime, Utc};
 use snafu::OptionExt;
 use std::net::IpAddr;
@@ -85,27 +86,6 @@ pub struct JwkAdditional {
 const SWAP_KEY_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 7);
 const OVERLAP_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 2);
 
-pub fn check_generate(cert_path: &Path) -> Result<(), Error> {
-    std::fs::create_dir_all(&cert_path).context(CreateCertPathError { path: cert_path.to_path_buf() })?;
-
-    let system_auth_jwks = system_auth_jwks(cert_path);
-    let now = chrono::Utc::now();
-
-    // Check jwks file writable
-    if system_auth_jwks.exists() {
-        let _ = File::open(&system_auth_jwks).context(GenericIOError {})?;
-    }
-
-    // Check directory writable
-    {
-        let dummy_file = system_auth_jwks.with_file_name("_non_");
-        let _ = File::create(&dummy_file).context(GenericIOError {})?;
-        std::fs::remove_file(&dummy_file).context(GenericIOError {})?;
-    }
-
-    update_jwks(&system_auth_jwks, now)
-}
-
 /// A given JWK, containing public key components like x,y for EC, is verified against
 /// the given private key. Any file access errors result in a returned error and should
 /// abort the application (wrong access rights!).
@@ -113,6 +93,8 @@ pub fn check_generate(cert_path: &Path) -> Result<(), Error> {
 /// If the private key does not match the public key or the private key file does not exist,
 /// false is returned, otherwise true.
 fn is_jwk_usable(key_file: &Path, jwk: &JWK<JwkAdditional>) -> Result<bool, Error> {
+    if !key_file.exists() { return Ok(false); }
+
     let decode_secret = if let AlgorithmParameters::EllipticCurve(p) = &jwk.algorithm {
         let mut decode_secret = Vec::with_capacity(p.x.len() + p.y.len() + 1);
         decode_secret.push(0x04);
@@ -191,22 +173,28 @@ fn create_jwk(now: DateTime<Utc>) -> Result<(ring::pkcs8::Document, JWK<JwkAddit
     Ok((pkcs8_bytes, jwk, uid))
 }
 
-fn update_jwks(jwks_file: &Path, now: DateTime<Utc>) -> Result<(), Error> {
+/// Reads the JWKS file (if any) in the given directory and removes old entries.
+/// Creates a new key file if necessary and adds the public key in form of a JWK to the JWKS file.
+fn update_jwks(cert_path: &Path, now: DateTime<Utc>) -> Result<chrono::DateTime<Utc>, Error> {
     use biscuit::jwk::JWKSet;
 
-    let mut jwks: JWKSet<JwkAdditional> = if jwks_file.exists() {
-        let file = File::open(&jwks_file).context(GenericIOError {})?;
+    std::fs::create_dir_all(&cert_path).context(CreateCertPathError { path: cert_path.to_path_buf() })?;
+
+    let system_auth_jwks = system_auth_jwks(cert_path);
+
+    let mut jwks: JWKSet<JwkAdditional> = if system_auth_jwks.exists() {
+        let file = File::open(&system_auth_jwks).context(GenericIOError {})?;
         let jwks: JWKSet<JwkAdditional> = serde_json::from_reader(BufReader::new(file)).context(SerdeError {})?;
         jwks
     } else { JWKSet { keys: Default::default() } };
 
-    let non_existing_file="_non_".to_owned();
+    let non_existing_file = "_non_".to_owned();
 
     // Filter old entries. Remove old key files if existent.
     let expire_time = chrono::Utc::now() - chrono::Duration::from_std(SWAP_KEY_TIME).expect("");
     for i in jwks.keys.len() as i32 - 1..0 {
         let jwk = &jwks.keys[i as usize];
-        let key_file = jwks_file.with_file_name(format!("ohx_system_key_{}.der", jwk.common.key_id.as_ref().unwrap_or(&non_existing_file)));
+        let key_file = cert_path.join(format!("ohx_system_key_{}.der", jwk.common.key_id.as_ref().unwrap_or(&non_existing_file)));
         if jwk.additional.expire < expire_time || !is_jwk_usable(&key_file, &jwk)? {
             if key_file.exists() {
                 std::fs::remove_file(key_file).context(GenericIOError {})?;
@@ -224,22 +212,61 @@ fn update_jwks(jwks_file: &Path, now: DateTime<Utc>) -> Result<(), Error> {
     });
 
     // Latest key (if any) must not be older than overlap time, otherwise a new key is generated
-    let expire_time = chrono::Utc::now() - chrono::Duration::from_std(OVERLAP_TIME).expect("");
+    let overlap_duration = chrono::Duration::from_std(OVERLAP_TIME).expect("");
+    let expire_time = chrono::Utc::now() - overlap_duration;
     if let Some(key) = key {
         if key.additional.expire > expire_time {
-            return Ok(());
+            return Ok(key.additional.expire - overlap_duration);
         }
     }
 
     let (pkcs8_document, jwk, uid) = create_jwk(now)?;
 
-    let key_file = jwks_file.with_file_name(format!("ohx_system_key_{}.der", uid));
+    let key_file = cert_path.join(format!("ohx_system_key_{}.der", uid));
     let mut key_pair_der = BufWriter::new(File::create(&key_file).context(GenericIOError {})?);
     key_pair_der.write(pkcs8_document.as_ref()).context(GenericIOError {})?;
 
+    let valid_time = jwk.additional.expire;
+
     jwks.keys.push(jwk);
-    let mut jwks_file = BufWriter::new(File::create(&jwks_file).context(GenericIOError {})?);
+    let mut jwks_file = BufWriter::new(File::create(&system_auth_jwks).context(GenericIOError {})?);
     serde_json::to_writer_pretty(&mut jwks_file, &jwks).context(SerdeError {})?;
 
-    Ok(())
+    info!("New JWT key created: {:?}", &jwks_file);
+
+    Ok(valid_time - overlap_duration)
+}
+
+pub struct CycleKey {
+    shutdown_rx: tokio::sync::mpsc::Receiver<()>,
+    cert_path: PathBuf,
+}
+
+impl CycleKey {
+    pub fn new(cert_path: PathBuf) -> (Self, tokio::sync::mpsc::Sender<()>) {
+        let (shutdown_tx, shutdown_rx) = tokio::sync::mpsc::channel(1);
+        (CycleKey { shutdown_rx, cert_path }, shutdown_tx)
+    }
+
+    pub async fn run(self) {
+        let CycleKey { mut shutdown_rx, cert_path } = self;
+
+        loop {
+            let now = chrono::Utc::now();
+            let duration = match update_jwks(&cert_path, now) {
+                Err(e) => {
+                    error!("Failed to cycle JWT keys. Please check for sufficient disk space and access rights.\nTrying again in 5 minutes\n{}", e);
+                    Duration::from_secs(60 * 5)
+                }
+                Ok(next_check_time) => {
+                    let duration = next_check_time - now;
+                    duration.to_std().expect("No negative duration")
+                }
+            };
+            if let Ok(_) = timeout(duration, shutdown_rx.recv()).await {
+                // Shutdown signal received
+                break;
+            }
+        }
+    }
 }

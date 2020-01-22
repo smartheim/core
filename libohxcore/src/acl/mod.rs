@@ -9,10 +9,11 @@
 //! Certain Things and Rules might be restricted to certain ACl tags.
 
 use snafu::Snafu;
+use serde::{Serialize,Deserialize};
+use libohxaddon::users::UserID;
 
-/// A user has an ID that must be a valid filename (passes filename sanitizer).
-pub struct UserID(String);
 /// An ACL Tag is a string, that must not only consist of whitespaces
+#[derive(Serialize, Deserialize, Debug)]
 pub struct AclTag(String);
 
 #[derive(Debug, Snafu)]
@@ -26,32 +27,4 @@ pub enum Error {
 pub struct Access {
     owner: UserID,
     acl: Vec<AclTag>,
-}
-
-use strum_macros::IntoStaticStr;
-
-#[derive(IntoStaticStr)]
-pub enum AccessScopes {
-    #[strum(to_string = "AD")]
-    Admin,
-    #[strum(to_string = "UM")]
-    UserManagement,
-    #[strum(to_string = "RM")]
-    RulesManagement,
-    #[strum(to_string = "SM")]
-    ScriptsManagement,
-    #[strum(to_string = "ICM")]
-    InterconnectsManagement,
-    #[strum(to_string = "IOM")]
-    IOServiceManagement,
-    #[strum(to_string = "AM")]
-    AddonManagement,
-    #[strum(to_string = "WM")]
-    WebUIManagement,
-    #[strum(to_string = "BM")]
-    BackupsManagement,
-    #[strum(to_string = "CERTM")]
-    CertificateManagement,
-    #[strum(to_string = "CC")]
-    CoreConfig,
 }

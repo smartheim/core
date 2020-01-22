@@ -14,6 +14,7 @@ edition = "2018"
 # Render the readme file on doc.rs
 [package.metadata.docs.rs]
 features = [ "external_doc" ]
+all-features = true
 
 [badges]
 is-it-maintained-open-issues = { repository = "openhab-nodes/core" }
@@ -21,6 +22,7 @@ is-it-maintained-issue-resolution = { repository = "openhab-nodes/core" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+
 # General
 serde = { version = "1.0.101", features = ["derive"] }
 serde_json = "1.0.41"
@@ -28,6 +30,9 @@ log = "0.4.8"
 structopt = "0.3.2"
 chrono = "0.4.9"
 semver = {version="0.9", features=["serde"]}
+strum_macros = "0.17.1"
+strum = "0.17.1"
+snafu = "0.6.0"
 
 # Discovery
 socket2 = {version="0.3", features=["reuseport"]}
@@ -37,6 +42,10 @@ getaddrs = {version= "0.1.0",optional=true}
 valico = "3.1.0"
 schemars = "0.6.1"
 
+# Configuration files
+sha2 = "0.8.0"
+inotify = "0.8.0"
+
 # Async
 futures-core =  { version = "^0.3.0"}
 futures-util =  { version = "^0.3.0"}
@@ -44,6 +53,28 @@ futures-channel =  { version = "^0.3.0"}
 tokio = { version = "^0.2.0", features = ["sync","net","time","rt-util","rt-core"] }
 pin-project = "0.4.6"
 
+# i18n
+fluent = "0.9.1"
+unic-langid = "0.7.1"
+
+# Efficiency
+arc-swap = "0.4.4"
+arraystring = { version = "0.3.0", default-features = true, features=["serde-traits"]}
+twoway = "0.2.1"
+
+# JWT verification
+biscuit = "0.4.1"
+
+# RPC
+tonic = { version = "0.1", default-features = true, features=["tls"]}
+hyper = "0.13.1"
+prost = "0.5.0"
+bytes = "0.5.3"
+
 [dev-dependencies]
 tokio = { version = "^0.2.0", features = ["sync","net","time","rt-util","rt-core","macros"] }
 env_logger = {version="0.7.1",default-features=false,features=["termcolor","humantime"]}
+
+[build-dependencies]
+# RPC
+tonic-build = { version = "0.1", default-features = true}

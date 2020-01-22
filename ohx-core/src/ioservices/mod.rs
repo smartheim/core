@@ -7,9 +7,10 @@ pub mod ioservice_template_registry;
 pub mod ioservice_registry;
 pub mod ioservice_store;
 
-use libohxcore::acl::{Access, UserID, self};
+use libohxcore::acl::{Access, self};
 use std::collections::BTreeMap;
 use libohxcore::command::Command;
+use libohxaddon::users::UserID;
 
 
 pub type IOServiceInstanceID = String;

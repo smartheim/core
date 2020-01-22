@@ -79,17 +79,27 @@ A quick run down on individual service responsibilities follows.
   Core provides IOServices with changed Addon Thing properties, if configured filters pass.
   Received *Commands* are routed back to core and to respective Addons if, again, the configured filters pass.
 - ohx-core acts as a notification service. Addons can extend the service by providing additional notification channels.
-- Backup strategies are executed by core. 
+
+`ohx-backup` executes backup strategies.
+  It requires full read access to the ohx_root_dir and write access to a ohx_root_dir/backups directory.
+- Backup strategies cannot be extended via Addons (yet?). Two strategies are provided:
+  - Google Drive
+  - Local files
+- If the config directory is a git repository:
+  - By default 24 hours after a change has been registered, a commit of all changes up to the current time is performed.
+  - A user may create named configuration "snapshots" (git tags).
+  - The service allows to restore configuration to a previous or more recent snapshot 
 
 `ohx-serve` is a static https file server for web-uis.
-- It generates a self-signed https certificate if none is found at start up and redirects http requests to https.
+- It generates a self-signed https certificate if none is found at start up
+- It redirects http requests to https. Always.
 - It provides a REST-like access (GET/POST/PUT/DELETE) to ioservice and interconnection configurations, rules, scripts, and general configuration. 
 - Without `ohx-serve` there will be no http(s) server, so no *Setup & Maintenance* Web UI and no way to
  manipulate configurations, rules, scripts via a web API. You can still just alter the files for configuration.
 
 `ohx-ruleengine` is an [Event, Condition, Action](https://en.wikipedia.org/wiki/Event_condition_action) rule engine.
 - Addons can register additional "Events", "Conditions", "Actions" and "Transformations" types.
- Please check the Rust generated documentation as well as the more detailed rule engine [readme](ruleengine/readme.md).
+ Please check the Rust generated documentation as well as the more detailed rule engine [readme](ohx-ruleengine/readme.md).
 - Without `ohx-ruleengine` scripts and rules are not enabled, but Addon interconnection does work.
 If you only require the interconnect functionality, just do not start up `ohx-ruleengine`.
 
@@ -120,10 +130,11 @@ Each service in this repository is versioned on its own.
 ## Security
 
 Despite everyone’s best efforts, security incidents are inevitable in an increasingly connected world.
-OHX is written in Rust to avoid common memory access and memory management pitfalls and user input parsing bugs, even for new contributors.
+OHX is written in Rust to avoid common memory access and memory management pitfalls as well as user input parsing bugs,
+even for new contributors.
 
 Industry standards like OAuth and https are used on the external interface level.
-Encryption and https certificate management is based on Rustls and Ring (based on boringssl), two very well maintained Rust crates.
+Encryption and https certificate management is based on Rustls and Ring (based on boringssl), two well maintained Rust crates.
 No openSSL or C legacy involved.
 
 Limited input buffers and bounded backpressure queues prevent abuse and denial of service attacks. 
@@ -136,8 +147,9 @@ via [network user namespaces](https://en.wikipedia.org/wiki/Linux_namespaces#Net
 OHX maintainers are committed to provide a secure solution within the limits that are publicly documented.
 Should a serious security incident occur, OHX maintainers will:
 
-* Communicate that risk via the websites news blog
+* Communicate major risks via the websites news blog
 * Issue a risk warning message via the cloudconnector Addon (if enabled)
+* Fill a report on [RustSec](https://rustsec.org/), so that automatic auditing tools know about vulnerable releases.  
 
 Report any findings to security@openhabx.com.
 
@@ -150,4 +162,4 @@ Update the CHANGELOG file before releasing! Use scripts for deployment that are 
   and to the Github Package Registry as Docker container, both including the latest revision of the **Setup & Maintenance** Web-UI.
 
 -----
- David Gräff, 2019
+ David Gräff, 2019-2020

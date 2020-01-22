@@ -11,8 +11,9 @@ use structopt::StructOpt;
 use log::{info, error};
 use snafu::Error;
 
-use libohxcore::{common_config, wait_until_known_time, wait_for_root_directory, shutdown_on_ctrl_c, key_filename, cert_filename, FileFormat};
+use libohxcore::{common_config, wait_until_known_time, shutdown_on_ctrl_c, key_filename, cert_filename, FileFormat, check_dir_access};
 use http::service::HttpService;
+
 mod create_system_auth_key;
 
 #[tokio::main]
@@ -29,9 +30,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
 
     create_root_directory(&config.common)?;
+    check_dir_access(&config.common.get_certs_directory())?;
     wait_until_known_time(false).await?;
 
-    create_system_auth_key::check_generate(&config.common.get_certs_directory())?;
+    let (cycle_fut, mut jwt_cycle_shutdown) = create_system_auth_key::CycleKey::new(config.common.get_certs_directory());
+    tokio::spawn(async move { cycle_fut.run().await; });
 
     shutdown_on_ctrl_c(shutdown_tx.clone());
 
@@ -43,6 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut shutdown = tokio::spawn(async move {
         let _ = shutdown_rx.recv().await;
         http_shutdown.shutdown().await;
+        let _ = jwt_cycle_shutdown.send(()).await;
     });
 
     if let Err(e) = http_service.run().await {

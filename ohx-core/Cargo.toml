@@ -1,8 +1,16 @@
 [package]
-name = "ohx-auth"
+name = "ohx-core"
 version = "0.1.0"
-authors = ["David Gräff <david.graeff@web.de>"]
+authors = ["David Graeff <david.graeff@web.de>"]
+description = "OHX is a modern smarthome solution, embracing technologies like software containers for language agnostic extensibility. Written in Rust with an extensive test suite, OHX is fast, efficient, secure and fun to work on."
+readme = "../readme.md"
+homepage = "https://github.com/openhab-nodes/core"
+repository = "https://github.com/openhab-nodes/core"
+keywords = ["smarthome","smart-home"]
+categories = []
+license = "MIT"
 edition = "2018"
+default-run = "ohx-core"
 
 # Render the readme file on doc.rs
 [package.metadata.docs.rs]
@@ -15,34 +23,30 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 libohxcore = {path="../libohxcore"}
+libohxaddon = {path="../libohxaddon"}
 
 # General: Errors, logging, cmdline, datetime
 serde = { version = "1.0.101", features = ["derive"] }
 serde_json = "1.0.41"
-serde_derive = "1.0.101"
 log = "0.4.8"
 env_logger = {version="0.7.1",default-features=false,features=["termcolor","humantime"]}
 nix = "0.15.0"
-structopt = "0.3.2"
+structopt = "0.3.4"
 snafu = "0.6.0"
 semver = "0.9.0"
 chrono = {version="0.4.9",features=["serde"]}
-
-arc-swap = "0.4.4"
-
-# Web service
-warp = {version="0.2.0-alpha.0", git="https://github.com/seanmonstar/warp",features=["tls"]}
-bytes = "0.5.3"
 
 # Async
 futures-core =  { version = "^0.3.0"}
 futures-util =  { version = "^0.3.0"}
 futures-channel =  { version = "^0.3.0"}
-tokio = { version = "^0.2.0", features = ["sync","net","signal","time"] }
+tokio = { version = "^0.2.0", features = ["sync","net","signal","time","io-util","rt-util","rt-core","macros"] }
 pin-project = "0.4.6"
+async-trait = "0.1.21"
 
-# JWT
-base64 = "0.11.0"
-ring = "0.16.9"
-#bcder = "0.4.1"
-untrusted = "0.7.0"
+# Efficiency
+arc-swap = "0.4.4"
+generational-arena = "0.2.6"
+
+# RPC
+tonic = "0.1.0"

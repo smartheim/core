@@ -8,10 +8,6 @@ const ROOT_DIR_NAME: &'static str = "ohx_root_dir";
 
 #[derive(StructOpt, Debug, Clone)]
 pub struct Config {
-    /// OHX will terminate if the root_directory does not exist yet.
-    /// Set this option to create the root directory and sub-directories instead.
-    pub create_root: bool,
-
     /// The ohx root directory.
     /// Core services expect a "backups", "config", "interconnects", "certs", "webui", "rules" and "scripts" sub-directory.
     #[structopt(parse(from_os_str), short, long, env = "OHX_ROOT_DIRECTORY")]
@@ -38,6 +34,11 @@ pub struct Config {
     /// Tells OHX core services that they run in a container.
     #[structopt(long, env = "OHX_CONTAINER_MODE")]
     pub container_mode: bool,
+
+    /// OHX will terminate if the root_directory does not exist yet.
+    /// Set this option to create the root directory and sub-directories instead.
+    #[structopt(long, env = "OHX_CREATE_ROOT")]
+    pub create_root: bool,
 }
 
 

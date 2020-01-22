@@ -1,4 +1,3 @@
-use crate::acl::UserID;
 
 pub struct ThingInstanceUid(usize, u64);
 

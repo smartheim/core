@@ -5,7 +5,7 @@ use schemars::schema::Schema;
 use serde::{Serialize, Deserialize};
 use schemars::JsonSchema;
 use std::path::{Path, PathBuf};
-use std::io::{BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Write};
 use tokio::sync::mpsc::{Sender, Receiver};
 use futures_util::future::{Abortable, AbortHandle, Aborted, AbortRegistration, Either};
 
@@ -22,6 +22,7 @@ use futures_util::StreamExt;
 use std::pin::Pin;
 use futures_util::stream::Next;
 use std::str::FromStr;
+use crate::schema_registry_trait::{SchemaRegistryTrait, SchemaRegistryCommand};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -48,11 +49,18 @@ pub enum ConfigChangedCommand {
     /// The original config file has been altered.
     /// The receiving party may find this file invalid and overwrite it with its current config instead.
     OriginalFileChanged(tokio::sync::oneshot::Sender<ConfigChangedResponse>),
-    /// The configuration file with a .new suffix has been found.
+    /// The configuration file with a "_" prefix has been found.
     /// The file must be moved to the original config filename after it has been validated and applied.
     NewFile(tokio::sync::oneshot::Sender<ConfigChangedResponse>, PathBuf),
     /// Config file has been deleted. The default configuration should be written now.
     FileDeleted(tokio::sync::oneshot::Sender<ConfigChangedResponse>),
+}
+
+pub enum ConfigWatcherCommand {
+    StopConfigurationWatcher,
+    ForcedReload { schema_name: String },
+    /// Write the
+    WriteChange { schema_name: String, config_serialized: String },
 }
 
 struct ConfigurationWatcherEntry {
@@ -69,10 +77,10 @@ impl ConfigurationWatcherEntry {
 pub struct ConfigurationWatcher {
     configurations: BTreeMap<String, ConfigurationWatcherEntry>,
     config_path: PathBuf,
-    abort_registration: Receiver<()>,
+    watcher_cmd: Receiver<ConfigWatcherCommand>,
 }
 
-/// Compute checksum
+/// Compute sha256 checksum
 fn chksum(path: &Path) -> Result<GenericArray<u8, U32>, Error> {
     let file = std::fs::File::open(&path).context(OpenFileForChecksum { path: path.clone() })?;
     let mut buffered_reader = BufReader::new(file);
@@ -82,21 +90,27 @@ fn chksum(path: &Path) -> Result<GenericArray<u8, U32>, Error> {
 }
 
 impl ConfigurationWatcher {
-    pub fn new(config_path: &Path) -> (Self, Sender<()>) {
-        let (abort_handle, abort_registration) = tokio::sync::mpsc::channel(1);
+    pub fn new(config_path: &Path) -> (Self, Sender<ConfigWatcherCommand>) {
+        let (abort_handle, watcher_cmd) = tokio::sync::mpsc::channel::<ConfigWatcherCommand>(1);
         (Self {
             configurations: Default::default(),
             config_path: config_path.to_path_buf(),
-            abort_registration,
+            watcher_cmd,
         }, abort_handle)
     }
     /// Loads the configuration file if there is any based on the schema ie struct name.
     /// Loading will never fail, even if the file is malformed.
+    ///
     /// If there is no file, the defaults will be serialized into a file.
-    /// This may return an error (directory not writable, storage space insufficient, etc).
-    pub fn register<T>(&mut self) -> Result<(T, Receiver<ConfigChangedCommand>), Error>
+    /// This may return an error (directory not writable, storage space insufficient, etc), this
+    /// should abort the application during startup.
+    ///
+    /// Returns a tuple of (config_type, config_changed_validate_channel)
+    pub fn register<T>(&mut self, config_changed_sender: Sender<ConfigChangedCommand>) -> Result<T, Error>
         where T: for<'de> Deserialize<'de> + Serialize + JsonSchema + Default {
-        let path = self.config_path.join(T::schema_name());
+        let schema_name = T::schema_name();
+
+        let path = self.config_path.join(&schema_name);
         let me = if let Ok(file) = std::fs::File::open(&path) {
             let buffered_reader = BufReader::new(file);
             serde_json::from_reader(buffered_reader).context(SerdeError {})?
@@ -108,11 +122,8 @@ impl ConfigurationWatcher {
             me
         };
 
-        use tokio::sync::mpsc::channel;
-        let (config_changed_sender, config_changed_receiver) = channel(1);
-
-        self.configurations.insert(T::schema_name(), ConfigurationWatcherEntry::new(config_changed_sender, chksum(&path)?));
-        Ok((me, config_changed_receiver))
+        self.configurations.insert(schema_name, ConfigurationWatcherEntry::new(config_changed_sender, chksum(&path)?));
+        Ok(me)
     }
 
     /// Start the configuration file watcher server.
@@ -123,7 +134,7 @@ impl ConfigurationWatcher {
     pub async fn run(self) -> Result<(), Error> {
         use futures_util::future::select;
 
-        let ConfigurationWatcher { mut configurations, config_path, mut abort_registration } = self;
+        let ConfigurationWatcher { mut configurations, config_path, mut watcher_cmd } = self;
 
         if configurations.is_empty() {
             panic!("No configuration files registered!");
@@ -140,12 +151,12 @@ impl ConfigurationWatcher {
         loop {
             let mut event = stream.next();
             let event = unsafe { Pin::new_unchecked(&mut event) };
-            let mut abort_fut = abort_registration.recv();
-            let abort_fut = unsafe { Pin::new_unchecked(&mut abort_fut) };
+            let mut watcher_cmd_fut = watcher_cmd.recv();
+            let watcher_cmd_fut = unsafe { Pin::new_unchecked(&mut watcher_cmd_fut) };
 
-            let r = select(event, abort_fut).await;
+            let r = select(event, watcher_cmd_fut).await;
             match r {
-                Either::Left((streamed_event, x)) => {
+                Either::Left((streamed_event, _x)) => {
                     // If the stream is EOF, return from loop
                     let event = match streamed_event {
                         Some(Ok(v)) => v,
@@ -161,42 +172,64 @@ impl ConfigurationWatcher {
                     let event: EventOwned = event;
                     if let Some(filename) = event.name {
                         if let Some(filename) = filename.to_str() {
-                            inform_about_changed_file(filename, &mut configurations, event.mask.contains(EventMask::DELETE)).await?;
+                            let path = std::path::Path::new(filename);
+                            let is_json = match path.extension() {
+                                Some(v) => v == "json",
+                                None => false
+                            };
+                            if !is_json { continue; }
+
+                            let is_new = match path.file_name() {
+                                Some(v) => v.to_str().expect("").starts_with("_"),
+                                None => false
+                            };
+                            let schema_name = path
+                                .file_stem().expect("A file stem to exist")
+                                .to_str().expect("A str version of filename");
+                            inform_about_changed_file(&mut configurations, path, schema_name, is_new, event.mask.contains(EventMask::DELETE)).await?;
                         }
                     }
                 }
-                Either::Right(_) => { break; }
+                Either::Right((watcher_cmd, _)) => {
+                    let watcher_cmd: Option<ConfigWatcherCommand> = watcher_cmd;
+                    match watcher_cmd {
+                        Some(ConfigWatcherCommand::ForcedReload { schema_name }) => {
+                            let file_name = config_path.with_file_name(&schema_name).with_extension("json");
+                            inform_about_changed_file(&mut configurations, &file_name, &schema_name, false, false).await?;
+                        }
+                        Some(ConfigWatcherCommand::WriteChange { schema_name, config_serialized }) => {
+                            let file_name = config_path.with_file_name(schema_name).with_extension("json");
+                            let file = std::fs::File::open(&file_name).context(OpenFileForChecksum { path: file_name.clone() })?;
+                            let mut buffered_writer = BufWriter::new(file);
+                            buffered_writer.write(config_serialized.as_bytes()).context(OpenFileForChecksum { path: file_name.clone() })?;
+                        }
+                        Some(ConfigWatcherCommand::StopConfigurationWatcher) => { break; }
+                        // The other end of the command channel has vanished -> cancel the file watcher
+                        None => { break; }
+                    }
+                }
             };
         }
         Ok(())
     }
 }
 
-async fn inform_about_changed_file(filename_orig: &str, configurations: &mut BTreeMap<String, ConfigurationWatcherEntry>, is_delete: bool) -> Result<(), Error> {
-    let (is_new, filename) = {
-        let is_new = filename_orig.ends_with(".new");
-        (is_new, match is_new {
-            true => &filename_orig[..filename_orig.len() - 4],
-            false => filename_orig
-        })
-    };
-
+async fn inform_about_changed_file(configurations: &mut BTreeMap<String, ConfigurationWatcherEntry>, filename: &Path, schema_name: &str, is_new: bool, is_delete: bool) -> Result<(), Error> {
     let mut target_gone = false;
 
-    if let Some(mut v) = configurations.get_mut(filename) {
+    if let Some(mut watcher_entry) = configurations.get_mut(schema_name) {
         let (sender, receiver) = tokio::sync::oneshot::channel();
         let (command, hash) = match (is_new, is_delete) {
-            (true, false) => (ConfigChangedCommand::NewFile(sender, PathBuf::from_str(filename_orig).expect("Watch str to path")), chksum(Path::new(filename))?),
-            (false, false) => (ConfigChangedCommand::OriginalFileChanged(sender), chksum(Path::new(filename))?),
-            (true, true) => { // Ignore removed .new files
+            (true, false) => (ConfigChangedCommand::NewFile(sender, filename.to_path_buf()), chksum(&filename)?),
+            (false, false) => (ConfigChangedCommand::OriginalFileChanged(sender), chksum(&filename)?),
+            (true, true) => { // Ignore removed new files
                 return Ok(());
             }
-            (false, true) => (ConfigChangedCommand::FileDeleted(sender),GenericArray::default()),
+            (false, true) => (ConfigChangedCommand::FileDeleted(sender), GenericArray::default()),
         };
 
-        if is_delete || hash != v.hash {
-
-            match v.config_changed_sender.send(command).await {
+        if is_delete || hash != watcher_entry.hash {
+            match watcher_entry.config_changed_sender.send(command).await {
                 Err(_) => {
                     target_gone = true;
                 }
@@ -204,12 +237,13 @@ async fn inform_about_changed_file(filename_orig: &str, configurations: &mut BTr
                     // Await the file processing
                     if let Ok(r) = receiver.await {
                         let r: ConfigChangedResponse = r;
+                        //TODO
                         // Update the hash
-                        v.hash = hash;
+                        watcher_entry.hash = hash;
                     }
-                    // Remove the .new file after processing
+                    // Remove the file with _ prefix after processing
                     if !is_delete && is_new {
-                        std::fs::remove_file(filename_orig).context(DeleteConfigFile {})?;
+                        std::fs::remove_file(filename).context(DeleteConfigFile {})?;
                     }
                 }
             }
@@ -219,36 +253,7 @@ async fn inform_about_changed_file(filename_orig: &str, configurations: &mut BTr
     // The sender channel didn't work which means the receiving end has closed down.
     // Remove the registration.
     if target_gone {
-        configurations.remove(filename);
+        configurations.remove(schema_name);
     }
     Ok(())
-}
-
-pub type SchemaRegistryNotifier = Sender<SchemaRegistryCommand>;
-
-pub enum SchemaRegistryCommand {
-    Register(String),
-    Unregister(String),
-}
-
-pub struct SchemaRegistryAutoUnregister {
-    channel: Sender<SchemaRegistryCommand>,
-    schema_name: String,
-}
-
-impl Drop for SchemaRegistryAutoUnregister {
-    fn drop(&mut self) {
-        let schema_name = self.schema_name.clone();
-        let mut channel = self.channel.clone();
-        tokio::spawn(async move {
-            let _ = channel.send(SchemaRegistryCommand::Unregister(schema_name)).await;
-        });
-    }
-}
-
-pub trait Configurable: JsonSchema + Default {
-    fn schema(&self) -> String {
-        let schema = schemars::gen::SchemaGenerator::default().into_root_schema_for::<Self>();
-        serde_json::to_string(&schema).expect("Valid jsonSchema annotations")
-    }
 }

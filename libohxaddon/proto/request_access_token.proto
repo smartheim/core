@@ -1,0 +1,32 @@
+// Auth Request new JWT Token
+
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.ohx-smarthome.auth.requesttoken";
+option java_outer_classname = "RequestTokenProto";
+
+package auth;
+
+// RequestToken is the only RPC that does not need to pass the JWT auth validation
+// NEVER send this RPC via an unencrypted transport channel. Preferably check peer certificates or use certificate pinning.
+// The refresh_token will send in plain text otherwise!
+service RequestToken {
+    // Request an access token by providing the refresh token
+    rpc RequestToken (RequestTokenMsg) returns (AccessTokenReply) {}
+}
+
+message RequestTokenMsg {
+    // A valid refresh token must be provided
+    string refresh_token = 1;
+    // Provide all required scopes
+    repeated string scope = 2;
+}
+
+// The response message containing the token
+// There is no user visible error string, because this RPC is purely for M2M communication where scopes are carefully selected.
+// The only reason for this to fail is, if the refresh_token has been revoked which requires manual user intervention anyway.
+message AccessTokenReply {
+    bool success = 1;
+    string access_token = 2;
+}

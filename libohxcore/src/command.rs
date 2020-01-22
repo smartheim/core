@@ -1,4 +1,4 @@
-use crate::acl::UserID;
+use libohxaddon::users::UserID;
 
 pub struct Command {
     user: UserID,
