@@ -18,6 +18,13 @@ pub struct Config {
     #[structopt(parse(from_os_str), long, env = "OHX_CERTS_DIRECTORY")]
     pub certs_directory: Option<PathBuf>,
 
+    /// The translations file directory. A translation file is a valid [Fluent](https://projectfluent.org/) file.
+    /// Files are expected to have the language ID (according to https://unicode.org/reports/tr35/tr35.html#Unicode_language_identifier)
+    /// as base file name.
+    /// For example, "en-US.tr" (American English)
+    #[structopt(parse(from_os_str), long, env = "OHX_I18N_DIRECTORY")]
+    pub i18n_directory: Option<PathBuf>,
+
     /// Comma separated list of IP addresses to bind to for inter-process communication and network services.
     /// Binds to 0.0.0.0 if not set.
     #[structopt(short, long, env = "OHX_NETWORK_INTERFACES")]
@@ -48,6 +55,7 @@ impl Config {
             create_root: false,
             root_directory: None,
             certs_directory: None,
+            i18n_directory: None,
             network_interfaces: vec![],
             influx_addr: None,
             addon_registries: vec![],
@@ -64,5 +72,8 @@ impl Config {
     }
     pub fn get_certs_directory(&self) -> PathBuf {
         self.certs_directory.clone().unwrap_or(self.get_root_directory().join("certs"))
+    }
+    pub fn get_i18n_directory(&self) -> PathBuf {
+        self.i18n_directory.clone().unwrap_or(self.get_root_directory().join("i18n"))
     }
 }

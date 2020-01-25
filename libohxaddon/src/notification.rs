@@ -7,6 +7,12 @@ use std::borrow::Cow;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use chrono::{Utc, DateTime};
 
+/// A notification central is either the real NotificationCentral if within ohx-serve,
+/// or an RPC proxy. If ohx-service is not running, a certain backlog is build up, until
+pub trait NotificationCentralTrait {
+    fn publish(&self, notification: PublishNotification);
+}
+
 #[derive(IntoStaticStr, Clone, Copy)]
 pub enum NotificationCategory {
     DiskSpaceInsufficient,
@@ -114,7 +120,9 @@ impl PublishNotification {
     /// Build a notification, pre-filled with the arguments of this notification publisher
     pub fn build(&self, urgency: NotificationUrgency, title_translate_id: &'static str, message_translate_id: &'static str, args: HashMap<&str, FluentValue<'_>>) -> Notification {
         let id = GLOBAL_NOTIFICATION_ID.fetch_add(1, Ordering::SeqCst);
-        Notification::new(id, self.component, urgency, self.cat, self.translations.tr(title_translate_id, Some(&args)).to_string(), self.translations.tr(message_translate_id, Some(&args)).to_string())
+        Notification::new(id, self.component, urgency, self.cat,
+                          self.translations.tr_args(title_translate_id, Some(&args)).to_string(),
+                          self.translations.tr_args(message_translate_id, Some(&args)).to_string())
     }
 
     pub async fn publish(&self, n: Notification) -> Result<(), tokio::sync::mpsc::error::SendError<Notification>> {
@@ -122,6 +130,4 @@ impl PublishNotification {
     }
 }
 
-pub mod rpc {
-
-}
+pub mod rpc {}

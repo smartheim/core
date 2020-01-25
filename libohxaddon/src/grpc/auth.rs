@@ -22,8 +22,8 @@ pub mod request_token_client {
     #![allow(unused_variables, dead_code, missing_docs)]
     use tonic::codegen::*;
     #[doc = " RequestToken is the only RPC that does not need to pass the JWT auth validation"]
-    #[doc = " NEVER send this RPC via an unencrypted transport channel. Preferably check peer certificates or use certificate pinning."]
-    #[doc = " The refresh_token will send in plain text otherwise!"]
+    #[doc = " NEVER send this RPC via an unencrypted transport channel."]
+    #[doc = " Preferably check peer certificates or use certificate pinning."]
     pub struct RequestTokenClient<T> {
         inner: tonic::client::Grpc<T>,
     }
@@ -88,8 +88,8 @@ pub mod request_token_server {
         ) -> Result<tonic::Response<super::AccessTokenReply>, tonic::Status>;
     }
     #[doc = " RequestToken is the only RPC that does not need to pass the JWT auth validation"]
-    #[doc = " NEVER send this RPC via an unencrypted transport channel. Preferably check peer certificates or use certificate pinning."]
-    #[doc = " The refresh_token will send in plain text otherwise!"]
+    #[doc = " NEVER send this RPC via an unencrypted transport channel."]
+    #[doc = " Preferably check peer certificates or use certificate pinning."]
     #[derive(Debug)]
     #[doc(hidden)]
     pub struct RequestTokenServer<T: RequestToken> {

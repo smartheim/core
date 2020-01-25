@@ -76,6 +76,8 @@ impl ServiceRegistry {
     }
     /// Resolve the given service. If the service has been resolved before, the entry
     /// of the cache is returned after a successful connection test.
+    ///
+    /// Returns an error if the data passing channel to the discovery service has been lost.
     pub async fn try_resolve(&self, request: ServiceResolveRequest) -> io::Result<ResolveResult> {
         let mut resolve_result = {
             let data = self.service_cache.lock().expect("Mutex access to service cache");
@@ -105,6 +107,20 @@ impl ServiceRegistry {
         let mut data = self.service_cache.lock().expect("Mutex access to service cache");
         data.insert(service_name, resolve_result.clone());
         Ok(resolve_result)
+    }
+    /// Resolve the given service. If the service has been resolved before, the entry
+    /// of the cache is returned after a successful connection test.
+    ///
+    /// Only returns after the service has been resolved.
+    /// This may stall the caller. If this is not the the intended behaviour, use try_resolve instead.
+    ///
+    /// Returns an error if the data passing channel to the discovery service has been lost.
+    pub async fn resolve(&self, request: ServiceResolveRequest) -> io::Result<ResolveResult> {
+        loop {
+            if let ResolveResult::Success(v) = self.try_resolve(request).await? {
+                return Ok(ResolveResult::Success(v));
+            }
+        }
     }
 }
 
@@ -189,7 +205,7 @@ mod tests {
         };
         assert_eq!(r.version, Version::new(2, 0, 1));
         assert_eq!(&r.service_name, "other_service");
-        let addr : SocketAddr= r.addresses.get(0).unwrap().parse().ok().unwrap();
+        let addr: SocketAddr = r.addresses.get(0).unwrap().parse().ok().unwrap();
         assert!(addr.ip() == Ipv4Addr::new(128, 0, 0, 3));
 
         // Shutdown

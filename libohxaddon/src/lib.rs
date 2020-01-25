@@ -1,4 +1,4 @@
-pub mod addon_startup_config;
+pub mod addon_common_config;
 pub mod discovery;
 pub mod addon;
 pub mod notification;

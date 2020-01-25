@@ -50,6 +50,7 @@ pub struct Discovery {
 }
 
 type IDType = ArrayString<U5>;
+type ChallengeType = [char;32];
 
 #[derive(Serialize, Deserialize)]
 struct ServiceResolverPacket {
@@ -65,7 +66,7 @@ enum ServiceResolverPacketType {
     Request {
         /// A request id. Responses to this request will have a matching response_id.
         /// The chosen id should be monotonic increasing, the unix timestamp in milliseconds is recommended.
-        request_id: u64,
+        challenge: ChallengeType,
         /// The actual request
         request: ServiceResolveRequest,
     },
@@ -142,10 +143,10 @@ impl Discovery {
         Ok(socket.into_udp_socket())
     }
 
-    /// Returns a response id that is guaranteed to be unique for this discovery instance
-    /// as long as no more than 1 request happens every millisecond.
-    fn make_response_id() -> u64 {
-        SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+    /// Creates a challenge. A challenge is a 32 byte random string of latin characters and numbers (A-Za-z0-9)
+    /// The response must contain the peers public key, the challenge and a MAC (message authentication code)
+    fn make_challenge() -> ChallengeType {
+
     }
 
     /// Create a new service resolver instance. A service resolver also responds to peer resolver requests,
@@ -176,7 +177,7 @@ impl Discovery {
     }
 
     pub fn service_name(&self) -> &str {
-        if let ServiceResolverPacketType::RequestResponse {response_id: _, service_name, version: _, service_addresses: _} = &self.response_packet.data {
+        if let ServiceResolverPacketType::RequestResponse { response_id: _, service_name, version: _, service_addresses: _ } = &self.response_packet.data {
             &service_name
         } else { panic!("Discovery owned response packet is not a response packet anymore!"); }
     }
@@ -257,7 +258,7 @@ impl Discovery {
                     } else {
                         info!("Request service {} ({})", &service.service_name, &service.min_version);
                         // Prepare outgoing packet
-                        let response_id = Discovery::make_response_id();
+                        let response_id = Discovery::make_challenge();
                         if let ServiceResolverPacketType::Request { ref mut request_id, ref mut request } = request_packet.data {
                             *request_id = response_id;
                             request.service_name.clear();
@@ -310,7 +311,7 @@ impl Discovery {
                                             service_name: service_name.clone(),
                                             version: version.clone(),
                                             addresses: service_addresses.clone(),
-                                            response_id:*response_id,
+                                            response_id: *response_id,
                                             rpc,
                                         })).await {
                                             warn!("Service resolver channel broken: {}", e);
@@ -349,7 +350,10 @@ async fn connect_rpc(addresses: &Vec<String>) -> Option<tonic::transport::Channe
         let rpc = grpc_channel_builder(address).connect().await;
         match rpc {
             Ok(rpc) => return Some(rpc),
-            Err(_) => continue
+            Err(e) => {
+                eprint!("error {}", e);
+                continue;
+            }
         }
     }
     return None;
@@ -358,7 +362,7 @@ async fn connect_rpc(addresses: &Vec<String>) -> Option<tonic::transport::Channe
 // Create all possible receive data types up front.
 // Ideally this will prevent any further allocations after a few rounds.
 #[inline]
-fn create_packets_upfront() -> (ServiceResolverPacket, ServiceResolverPacket){
+fn create_packets_upfront() -> (ServiceResolverPacket, ServiceResolverPacket) {
     let mut request_packet = ServiceResolverPacket {
         id: IDType::from_chars("OHXr1".chars()),
         data: ServiceResolverPacketType::Request { request_id: 0, request: ServiceResolveRequest::new(String::new()) },
@@ -396,24 +400,31 @@ fn packet_inplace_deserialize<'a>(receive_response_packet: &'a mut ServiceResolv
     let mut de = serde_json::de::Deserializer::from_slice(data);
     match ServiceResolverPacket::deserialize_in_place(&mut de, buffer) {
         Ok(_) => { Some(buffer) }
-        Err(_) => { None }
+        Err(e) => {
+            eprint!("error {}", e);
+            None
+        }
     }
 }
 
-#[cfg(tests)]
+#[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_deserialize() {
         let (mut request_packet, mut receive_response_packet) = create_packets_upfront();
-        let data = b"{'id':'OHXr1'}";
-        let result = packet_inplace_deserialize(&mut request_packet, &mut receive_response_packet, &data);
+        let data = b"{\"id\":\"OHXr1\",\"type\":\"Request\",\"request_id\":2,\"request\":{\"service_name\":\"service\",\"min_version\":\"1.0.0\"}}";
+        let result = packet_inplace_deserialize(&mut request_packet, &mut receive_response_packet, &data[..]);
         assert!(result.is_some());
         let result = result.unwrap();
         match &result.data {
-            ServiceResolverPacketType::Request { .. } => {assert_eq!(request_packet, result)},
-            ServiceResolverPacketType::RequestResponse { .. } => {panic!("Request expected")},
+            ServiceResolverPacketType::Request { request_id, request } => {
+                assert_eq!(*request_id, 2);
+                assert_eq!(&request.service_name, "service");
+                assert_eq!(request.min_version, semver::Version::new(1, 0, 0));
+            }
+            ServiceResolverPacketType::RequestResponse { .. } => { panic!("Request expected") }
         }
     }
 }
